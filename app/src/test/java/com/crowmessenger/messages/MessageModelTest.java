@@ -2,6 +2,7 @@ package com.crowmessenger.messages;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -20,8 +21,23 @@ public class MessageModelTest {
         assertEquals("", message.senderAddress);
         assertEquals("", message.status);
         assertEquals("", message.localStatusId);
+        assertEquals("", message.sourceType);
+        assertEquals("", message.sourceId);
         assertEquals(1234L, message.dateMillis);
         assertFalse(message.outgoing);
+    }
+
+    @Test
+    public void storedMessages_haveStableDeleteIdentity() {
+        ChatMessage sms = ChatMessage.storedSms("Hello", "42", 1234L, false);
+        ChatMessage mms = ChatMessage.storedLocalMms("Photo", "file:///photo.jpg", "", "", "mms-1", 1235L, true);
+
+        assertTrue(sms.canDeleteStoredMessage());
+        assertEquals(ChatMessage.SOURCE_SMS, sms.sourceType);
+        assertEquals("42", sms.sourceId);
+        assertTrue(mms.canDeleteStoredMessage());
+        assertEquals(ChatMessage.SOURCE_LOCAL_MMS, mms.sourceType);
+        assertEquals("mms-1", mms.sourceId);
     }
 
     @Test

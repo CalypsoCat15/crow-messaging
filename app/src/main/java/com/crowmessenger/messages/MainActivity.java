@@ -2353,14 +2353,18 @@ public class MainActivity extends Activity {
         if (hasDisplayableText(message)) {
             options.add("Copy text");
         }
+        if (hasDisplayableText(message) || hasImage) {
+            options.add("Forward");
+        }
         if (hasImage) {
             options.add("View picture");
+            options.add("Save picture");
         }
         if (isRetryableFailedMessage(message)) {
             options.add("Retry sending");
         }
-        if (message.hasLocalStatus()) {
-            options.add("Remove from thread");
+        if (message.canDeleteStoredMessage() || message.hasLocalStatus()) {
+            options.add("Delete message");
         }
         options.add("Message details");
 
@@ -2370,12 +2374,19 @@ public class MainActivity extends Activity {
                     String choice = options.get(which);
                     if ("Copy text".equals(choice)) {
                         copyMessageText(displayableText(message));
+                    } else if ("Forward".equals(choice)) {
+                        forwardMessage(message);
                     } else if ("View picture".equals(choice)) {
                         showPicture(message.imageUri);
+                    } else if ("Save picture".equals(choice)) {
+                        Uri uri = messageImageUri(message.imageUri);
+                        if (uri != null) {
+                            savePictureToGallery(uri);
+                        }
                     } else if ("Retry sending".equals(choice)) {
                         confirmRetryFailedMessage(message);
-                    } else if ("Remove from thread".equals(choice)) {
-                        removeLocalStatusMessage(message);
+                    } else if ("Delete message".equals(choice)) {
+                        confirmDeleteMessage(message);
                     } else if ("Message details".equals(choice)) {
                         showMessageDetails(message);
                     }
@@ -2462,19 +2473,6 @@ public class MainActivity extends Activity {
             refreshActiveThreadAsync(true);
         } catch (SmsSender.SendException ex) {
             Toast.makeText(this, ex.getMessage(), Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void removeLocalStatusMessage(ChatMessage message) {
-        if (message == null || !message.hasLocalStatus()) {
-            return;
-        }
-        if (SmsSender.deletePendingById(this, message.localStatusId)) {
-            Toast.makeText(this, "Removed from thread.", Toast.LENGTH_SHORT).show();
-            refreshActiveThreadAsync(false);
-        } else if (LocalMmsStore.deleteFailedMessageById(this, message.localStatusId)) {
-            Toast.makeText(this, "Removed from thread.", Toast.LENGTH_SHORT).show();
-            refreshActiveThreadAsync(false);
         }
     }
 
@@ -3304,6 +3302,48 @@ public class MainActivity extends Activity {
                 .setPositiveButton("Delete forever", (dialog, which) -> deleteConversationForever(item.conversation(), true))
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    private void forwardMessage(ChatMessage message) {
+        if (message == null) {
+            return;
+        }
+        deleteCameraImagesIfNeeded(pendingComposeImageUris);
+        pendingComposeImageUris.clear();
+        composeRecipients.clear();
+        composeDraft = displayableText(message);
+        Uri image = messageImageUri(message.imageUri);
+        if (image != null) {
+            pendingComposeImageUris.add(image);
+        }
+        showComposePage(false);
+    }
+
+    private void confirmDeleteMessage(ChatMessage message) {
+        new AlertDialog.Builder(this)
+                .setTitle("Delete this message?")
+                .setMessage("This removes only this message from your phone and cannot be undone.")
+                .setPositiveButton("Delete", (dialog, which) -> deleteMessage(message))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void deleteMessage(ChatMessage message) {
+        boolean deleted = SmsStore.deleteMessage(this, message);
+        if (!deleted && message != null && message.hasLocalStatus()) {
+            deleted = SmsSender.deletePendingById(this, message.localStatusId)
+                    || LocalMmsStore.deleteFailedMessageById(this, message.localStatusId);
+        }
+        if (!deleted) {
+            Toast.makeText(this, "This message could not be deleted.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (activeConversation != null) {
+            discardConversationCaches(activeConversation.address);
+        }
+        invalidateInboxPresentationCache();
+        Toast.makeText(this, "Message deleted.", Toast.LENGTH_SHORT).show();
+        refreshActiveThreadAsync(false);
     }
 
     private void showCrowMenu(String title, List<String> options, MenuChoiceHandler handler) {

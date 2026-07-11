@@ -20,6 +20,30 @@ import java.util.List;
 @Config(sdk = 35)
 public class SmsStoreTest {
     @Test
+    public void deleteMessage_removesOnlySelectedLocalMmsRecord() {
+        Context context = RuntimeEnvironment.getApplication();
+        context.getSharedPreferences("local_mms", Context.MODE_PRIVATE).edit().clear().commit();
+        LocalMmsStore.saveNotice(context, "15551234567", "First", 1000L);
+        LocalMmsStore.saveNotice(context, "15551234567", "Second", 2000L);
+        List<ChatMessage> messages = LocalMmsStore.loadForAddress(context, "15551234567");
+
+        assertEquals(2, messages.size());
+        assertTrue(SmsStore.deleteMessage(context, messages.get(0)));
+
+        List<ChatMessage> remaining = LocalMmsStore.loadForAddress(context, "15551234567");
+        assertEquals(1, remaining.size());
+        assertEquals("Second", remaining.get(0).body);
+    }
+
+    @Test
+    public void deleteMessage_rejectsUntrustedSmsIdentity() {
+        Context context = RuntimeEnvironment.getApplication();
+        ChatMessage message = ChatMessage.storedSms("Hello", "1 OR 1=1", 1000L, false);
+
+        assertFalse(SmsStore.deleteMessage(context, message));
+    }
+
+    @Test
     public void loadConversations_includesLocalMmsWhenSmsProviderUnavailable() {
         Context context = RuntimeEnvironment.getApplication();
         context.getSharedPreferences("local_mms", Context.MODE_PRIVATE)

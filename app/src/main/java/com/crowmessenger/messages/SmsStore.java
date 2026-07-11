@@ -26,7 +26,8 @@ final class SmsStore {
     private static final String[] MESSAGE_COLUMNS = new String[] {
             Telephony.Sms.BODY,
             Telephony.Sms.DATE,
-            Telephony.Sms.TYPE
+            Telephony.Sms.TYPE,
+            Telephony.Sms._ID
     };
     private static final String[] SMS_ID_ADDRESS_COLUMNS = new String[] {
             Telephony.Sms._ID,
@@ -277,8 +278,9 @@ final class SmsStore {
                 if (!shouldShowMessage(blockedOnly, blockedSender, keywordSpam)) {
                     continue;
                 }
-                messages.add(new ChatMessage(
+                messages.add(ChatMessage.storedSms(
                         body,
+                        cursor.getString(3),
                         cursor.getLong(1),
                         isOutgoingSms(type)
                 ));
@@ -516,6 +518,27 @@ final class SmsStore {
         }
         MessageNotifier.clearIncomingForAddress(context, address);
         return deleted;
+    }
+
+    static boolean deleteMessage(Context context, ChatMessage message) {
+        if (message == null || !message.canDeleteStoredMessage()) {
+            return false;
+        }
+        if (ChatMessage.SOURCE_LOCAL_MMS.equals(message.sourceType)) {
+            return LocalMmsStore.deleteMessageById(context, message.sourceId);
+        }
+        if (!ChatMessage.SOURCE_SMS.equals(message.sourceType) || !message.sourceId.matches("[0-9]+")) {
+            return false;
+        }
+        try {
+            return context.getContentResolver().delete(
+                    SMS_URI,
+                    Telephony.Sms._ID + "=?",
+                    new String[] { message.sourceId }
+            ) == 1;
+        } catch (SecurityException | IllegalArgumentException ignored) {
+            return false;
+        }
     }
 
     private static int deleteAndroidConversation(Context context, String threadId, String address) {

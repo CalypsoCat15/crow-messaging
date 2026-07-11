@@ -213,6 +213,22 @@ final class LocalMmsStore {
         return true;
     }
 
+    static synchronized boolean deleteMessageById(Context context, String id) {
+        if (TextUtils.isEmpty(id)) {
+            return false;
+        }
+        SharedPreferences prefs = prefs(context);
+        Set<String> keptIds = savedIds(prefs);
+        if (!keptIds.remove(id)) {
+            return false;
+        }
+        deleteStoredImage(context, prefs.getString(imageKey(id), ""));
+        SharedPreferences.Editor editor = prefs.edit();
+        removeMessage(editor, id);
+        editor.putStringSet(KEY_IDS, keptIds).apply();
+        return true;
+    }
+
     static void saveNotice(Context context, String address, String body, long dateMillis) {
         saveMessage(context, address, body, "", dateMillis, false);
     }
@@ -457,7 +473,7 @@ final class LocalMmsStore {
             if (isFiltered(context, savedAddress, sender, body, outgoing) != blockedOnly) {
                 continue;
             }
-            messages.add(new ChatMessage(
+            messages.add(ChatMessage.storedLocalMms(
                     body,
                     prefs.getString(imageKey(id), ""),
                     sender,
