@@ -25,7 +25,24 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        if (context == null || intent == null || !ACTION_MMS_DOWNLOADED.equals(intent.getAction())) {
+            return;
+        }
         int result = getResultCode();
+        PendingResult pendingResult = goAsync();
+        Context appContext = context.getApplicationContext();
+        new Thread(() -> {
+            try {
+                handleDownloadResult(appContext, intent, result);
+            } catch (RuntimeException ex) {
+                MmsDebugStore.record(appContext, "MMS callback worker failed: " + ex.getClass().getSimpleName());
+            } finally {
+                pendingResult.finish();
+            }
+        }, "crow-mms-download-result").start();
+    }
+
+    static synchronized void handleDownloadResult(Context context, Intent intent, int result) {
         String resultDescription = explainResult(result, intent);
         MmsDebugStore.record(context, "MMS download callback: " + resultDescription);
         String id = intent == null ? "" : intent.getStringExtra(EXTRA_DOWNLOAD_ID);
@@ -143,7 +160,7 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
         MessageUpdateBroadcaster.broadcast(context, address);
     }
 
-    static void recoverPendingDownloads(Context context) {
+    static synchronized void recoverPendingDownloads(Context context) {
         for (String id : LocalMmsStore.pendingIds(context)) {
             LocalMmsStore.Pending pending = LocalMmsStore.pending(context, id);
             if (TextUtils.isEmpty(pending.pduPath)) {

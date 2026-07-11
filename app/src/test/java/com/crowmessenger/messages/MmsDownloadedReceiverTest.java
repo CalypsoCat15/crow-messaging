@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.telephony.SmsManager;
 
 import org.junit.Before;
@@ -106,6 +107,36 @@ public class MmsDownloadedReceiverTest {
         assertEquals(pduFile.getAbsolutePath(), LocalMmsStore.pending(context, "fresh-partial-download").pduPath);
         assertTrue(pduFile.exists());
         assertTrue(LocalMmsStore.loadForAddress(context, "15551234567").isEmpty());
+    }
+
+    @Test
+    public void handleDownloadResult_cleansFailedCallbackOnlyOnce() throws Exception {
+        File downloadDir = MmsFiles.appFileDirPath(context, MmsFiles.DOWNLOADS_DIR);
+        assertTrue(downloadDir.exists() || downloadDir.mkdirs());
+        File pduFile = new File(downloadDir, "callback-failure.pdu");
+        assertTrue(pduFile.createNewFile());
+        String id = "callback-failure";
+        String address = "15551234567";
+        LocalMmsStore.savePending(context, id, address, pduFile.getAbsolutePath());
+        Intent callback = new Intent(MmsDownloadedReceiver.ACTION_MMS_DOWNLOADED)
+                .putExtra(MmsDownloadedReceiver.EXTRA_DOWNLOAD_ID, id);
+
+        MmsDownloadedReceiver.handleDownloadResult(
+                context,
+                callback,
+                SmsManager.MMS_ERROR_HTTP_FAILURE
+        );
+        MmsDownloadedReceiver.handleDownloadResult(
+                context,
+                callback,
+                SmsManager.MMS_ERROR_HTTP_FAILURE
+        );
+
+        assertEquals("", LocalMmsStore.pending(context, id).pduPath);
+        assertFalse(pduFile.exists());
+        List<ChatMessage> messages = LocalMmsStore.loadForAddress(context, address);
+        assertEquals(1, messages.size());
+        assertEquals(LocalMmsStore.DOWNLOAD_FAILED_MESSAGE, messages.get(0).body);
     }
 
     @Test
