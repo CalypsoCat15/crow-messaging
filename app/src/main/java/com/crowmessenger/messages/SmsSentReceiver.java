@@ -10,6 +10,15 @@ public class SmsSentReceiver extends BroadcastReceiver {
         if (intent == null || !SmsSender.ACTION_SMS_SENT.equals(intent.getAction())) {
             return;
         }
-        SmsSender.handleSentResult(context, intent, getResultCode());
+        int resultCode = getResultCode();
+        PendingResult pendingResult = goAsync();
+        Context appContext = context.getApplicationContext();
+        new Thread(() -> {
+            try {
+                SmsSender.handleSentResult(appContext, intent, resultCode);
+            } finally {
+                pendingResult.finish();
+            }
+        }, "crow-sms-send-result").start();
     }
 }

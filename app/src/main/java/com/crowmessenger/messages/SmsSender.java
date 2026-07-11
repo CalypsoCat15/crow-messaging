@@ -204,7 +204,7 @@ final class SmsSender {
         return parts;
     }
 
-    static void handleSentResult(Context context, Intent intent, int resultCode) {
+    static synchronized void handleSentResult(Context context, Intent intent, int resultCode) {
         String sendId = intent == null ? "" : intent.getStringExtra(EXTRA_SEND_ID);
         PendingSend pending = pending(context, sendId);
         if (pending == null) {

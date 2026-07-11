@@ -14,6 +14,10 @@ import android.content.SharedPreferences;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -163,7 +167,7 @@ public class SmsSenderTest {
         Intent intent = new Intent(context, ScheduledSmsReceiver.class);
         intent.setAction(ScheduledSmsReceiver.ACTION_SEND_SCHEDULED);
 
-        new ScheduledSmsReceiver().onReceive(context, intent);
+        ScheduledSmsReceiver.handleIntent(context, intent);
 
         assertTrue(ScheduledMessageStore.find(context, scheduled.id).failed());
         assertFalse(SmsSender.hasPendingScheduled(context, scheduled.id));
@@ -199,6 +203,29 @@ public class SmsSenderTest {
         assertFalse(pendingPrefs().getStringSet("send_" + sendId + "_completed_parts", new HashSet<>()).contains("1"));
 
         SmsSender.handleSentResult(context, sentIntent(sendId, 1), Activity.RESULT_OK);
+        assertFalse(pendingPrefs().contains("send_" + sendId + "_address"));
+    }
+
+    @Test
+    public void handleSentResult_serializesConcurrentMultipartCallbacks() throws Exception {
+        String sendId = "concurrent-multipart-send";
+        seedPending(sendId, "", System.currentTimeMillis(), 2);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        Future<?> first = executor.submit(() -> SmsSender.handleSentResult(
+                context,
+                sentIntent(sendId, 0),
+                Activity.RESULT_OK
+        ));
+        Future<?> second = executor.submit(() -> SmsSender.handleSentResult(
+                context,
+                sentIntent(sendId, 1),
+                Activity.RESULT_OK
+        ));
+        first.get(5, TimeUnit.SECONDS);
+        second.get(5, TimeUnit.SECONDS);
+        executor.shutdownNow();
+
         assertFalse(pendingPrefs().contains("send_" + sendId + "_address"));
     }
 

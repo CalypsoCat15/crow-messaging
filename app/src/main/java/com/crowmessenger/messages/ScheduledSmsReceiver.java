@@ -19,15 +19,28 @@ public class ScheduledSmsReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         String action = intent == null ? "" : intent.getAction();
+        if (!Intent.ACTION_BOOT_COMPLETED.equals(action) && !ACTION_SEND_SCHEDULED.equals(action)) {
+            return;
+        }
+        PendingResult pendingResult = goAsync();
+        Context appContext = context.getApplicationContext();
+        new Thread(() -> {
+            try {
+                handleIntent(appContext, intent);
+            } finally {
+                pendingResult.finish();
+            }
+        }, "crow-scheduled-message").start();
+    }
+
+    static void handleIntent(Context context, Intent intent) {
+        String action = intent == null ? "" : intent.getAction();
         if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {
             scheduleAll(context);
-            return;
-        }
-        if (!ACTION_SEND_SCHEDULED.equals(action)) {
-            return;
-        }
-        synchronized (SEND_LOCK) {
-            sendScheduledMessage(context, intent);
+        } else if (ACTION_SEND_SCHEDULED.equals(action)) {
+            synchronized (SEND_LOCK) {
+                sendScheduledMessage(context, intent);
+            }
         }
     }
 
@@ -112,7 +125,9 @@ public class ScheduledSmsReceiver extends BroadcastReceiver {
         Intent intent = new Intent(context, ScheduledSmsReceiver.class);
         intent.setAction(ACTION_SEND_SCHEDULED);
         intent.putExtra(EXTRA_ID, id);
-        new ScheduledSmsReceiver().onReceive(context, intent);
+        synchronized (SEND_LOCK) {
+            sendScheduledMessage(context, intent);
+        }
     }
 
     private static PendingIntent pendingIntent(Context context, String id) {
