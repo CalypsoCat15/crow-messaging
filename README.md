@@ -70,7 +70,7 @@ The app is designed around real-world use: conversations should open quickly, ne
 
 ## Quality
 
-Crow Messenger is backed by **237 automated tests** covering message parsing, conversation grouping, spam behavior, Android sharing intents, MMS handling, scheduled messages, notifications, settings backup, and other core behavior. Android lint checks are also part of the verification process.
+Crow Messenger is backed by **241 automated tests** covering message parsing, conversation grouping, spam behavior, Android sharing intents, MMS handling, scheduled messages, notifications, settings backup, and other core behavior. Android lint checks are also part of the verification process.
 
 The project uses save points throughout development so working SMS and MMS behavior can be protected while new features are added.
 
