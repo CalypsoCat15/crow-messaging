@@ -245,6 +245,14 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void unreadBadgeLabel_isCompactAndBounded() {
+        assertEquals("", MainActivity.unreadBadgeLabel(0));
+        assertEquals("1", MainActivity.unreadBadgeLabel(1));
+        assertEquals("42", MainActivity.unreadBadgeLabel(42));
+        assertEquals("99+", MainActivity.unreadBadgeLabel(100));
+    }
+
+    @Test
     public void keyboardContentBottomPadding_compactsOnlyWhileKeyboardIsVisible() {
         assertEquals(6, MainActivity.keyboardContentBottomPadding(true, 20, 6));
         assertEquals(20, MainActivity.keyboardContentBottomPadding(false, 20, 6));

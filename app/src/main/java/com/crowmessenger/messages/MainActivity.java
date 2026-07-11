@@ -53,6 +53,7 @@ import android.view.View;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -130,6 +131,7 @@ public class MainActivity extends Activity {
     private static final int INITIAL_THREAD_RENDER_LIMIT = 18;
     private static final long FULL_THREAD_RENDER_DELAY_MILLIS = 48L;
     private static final long DRAFT_SAVE_DELAY_MILLIS = 250L;
+    private static final long SEARCH_DEBOUNCE_MILLIS = 180L;
     private static final long INBOX_REFRESH_THROTTLE_MILLIS = 15_000L;
     private static final AtomicBoolean STARTUP_MAINTENANCE_RUNNING = new AtomicBoolean();
     private static final int[] BOTTOM_SETTLE_DELAYS_MS = new int[] { 0, 80, 180 };
@@ -215,6 +217,12 @@ public class MainActivity extends Activity {
     private Future<?> threadLoadTask;
     private final Handler draftSaveHandler = new Handler(Looper.getMainLooper());
     private final Runnable draftSaveTask = this::persistPendingDraft;
+    private final Handler searchHandler = new Handler(Looper.getMainLooper());
+    private final Runnable inboxSearchTask = () -> {
+        if (screenMode == ScreenMode.INBOX && inboxList != null) {
+            refreshInboxList(true);
+        }
+    };
     private String pendingDraftAddress = "";
     private String pendingDraftBody = "";
     private final LruCache<String, List<Conversation>> inboxRowsCache = new LruCache<>(SCREEN_CACHE_LIMIT);
@@ -485,6 +493,9 @@ public class MainActivity extends Activity {
         search.setText(searchQuery);
         search.setSingleLine(true);
         search.setTextSize(15);
+        search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        search.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_search_muted, 0, 0, 0);
+        search.setCompoundDrawablePadding(dp(8));
         search.setBackgroundResource(R.drawable.composer_background);
         LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(42));
         searchParams.topMargin = dp(8);
@@ -496,7 +507,8 @@ public class MainActivity extends Activity {
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 searchQuery = s.toString();
-                refreshInboxList();
+                searchHandler.removeCallbacks(inboxSearchTask);
+                searchHandler.postDelayed(inboxSearchTask, SEARCH_DEBOUNCE_MILLIS);
             }
 
             @Override
@@ -1599,19 +1611,29 @@ public class MainActivity extends Activity {
         trailing.addView(time);
 
         if (conversation.unreadCount > 0) {
-            View unreadDot = new View(this);
-            unreadDot.setBackgroundResource(R.drawable.unread_badge);
-            unreadDot.setContentDescription(conversation.unreadCount + " unread messages");
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(10), dp(10));
+            TextView unreadBadge = text(unreadBadgeLabel(conversation.unreadCount), 11, BLACK, Typeface.BOLD);
+            unreadBadge.setGravity(Gravity.CENTER);
+            unreadBadge.setMinWidth(dp(20));
+            unreadBadge.setPadding(dp(5), 0, dp(5), 0);
+            unreadBadge.setBackground(primaryGradientBackground(10));
+            unreadBadge.setContentDescription(conversation.unreadCount + " unread messages");
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, dp(20));
             params.gravity = Gravity.END;
-            params.topMargin = dp(10);
-            trailing.addView(unreadDot, params);
+            params.topMargin = dp(7);
+            trailing.addView(unreadBadge, params);
         }
         row.setOnLongClickListener(v -> {
             showConversationMenu(conversation);
             return true;
         });
         return row;
+    }
+
+    static String unreadBadgeLabel(int unreadCount) {
+        if (unreadCount <= 0) {
+            return "";
+        }
+        return unreadCount > 99 ? "99+" : String.valueOf(unreadCount);
     }
 
     private View emptyStateView(String title, String subtitle, boolean featureLargeLogo) {
@@ -4832,6 +4854,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         activityResumed = false;
+        searchHandler.removeCallbacks(inboxSearchTask);
         flushPendingDraft();
         inboxLoadGeneration++;
         threadLoadGeneration++;
