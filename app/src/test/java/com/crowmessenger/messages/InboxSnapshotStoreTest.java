@@ -78,4 +78,18 @@ public class InboxSnapshotStoreTest {
 
         assertEquals(24, InboxSnapshotStore.load(context).size());
     }
+
+    @Test
+    public void remove_hidesOnlyMatchingConversation() {
+        InboxSnapshotStore.save(context, List.of(
+                new Conversation("1", "+1 (555) 123-4567", "Dave", "Hello", 2L, 0),
+                new Conversation("2", "15557654321", "Lisa", "Hi", 1L, 0)
+        ));
+
+        InboxSnapshotStore.remove(context, "15551234567");
+
+        List<Conversation> loaded = InboxSnapshotStore.load(context);
+        assertEquals(1, loaded.size());
+        assertEquals("Lisa", loaded.get(0).name);
+    }
 }

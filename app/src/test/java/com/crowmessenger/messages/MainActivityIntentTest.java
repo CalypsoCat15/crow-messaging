@@ -288,6 +288,8 @@ public class MainActivityIntentTest {
         assertEquals("blocked|jordan", MainActivity.inboxCacheKey(true, "JORDAN"));
         assertEquals("inbox|+15551234", MainActivity.threadCacheKey(" +15551234 ", false));
         assertEquals("blocked|+15551234", MainActivity.threadCacheKey("+15551234", true));
+        assertEquals("inbox|PICTURES|", MainActivity.inboxCacheKey(false, "", SearchFilter.PICTURES));
+        assertEquals("Search message text", MainActivity.searchHint(SearchFilter.MESSAGE_TEXT));
     }
 
     @Test

@@ -91,4 +91,10 @@ final class InboxSnapshotStore {
         }
         return conversations;
     }
+
+    static void remove(Context context, String address) {
+        List<Conversation> rows = load(context);
+        rows.removeIf(conversation -> AddressUtil.sameConversationAddress(conversation.address, address));
+        save(context, rows);
+    }
 }

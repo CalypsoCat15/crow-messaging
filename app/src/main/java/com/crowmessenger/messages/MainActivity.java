@@ -158,7 +158,9 @@ public class MainActivity extends Activity {
         COMPOSE,
         SPAM_RULES,
         PICTURE,
-        CONVERSATION_INFO
+        CONVERSATION_INFO,
+        TRASH,
+        MEDIA
     }
 
     private LinearLayout root;
@@ -170,6 +172,7 @@ public class MainActivity extends Activity {
     private LinearLayout cachedInboxList;
     private boolean cachedInboxBlocked;
     private String cachedInboxQuery = "";
+    private SearchFilter cachedInboxFilter = SearchFilter.ALL;
     private String renderedInboxCacheKey = "";
     private LinearLayout cachedChatRoot;
     private LinearLayout cachedChatMessagesList;
@@ -192,7 +195,9 @@ public class MainActivity extends Activity {
     private boolean pendingPickImageForCompose;
     private boolean scrollThreadToBottomOnResume;
     private String searchQuery = "";
+    private SearchFilter searchFilter = SearchFilter.ALL;
     private String threadSearchQuery = "";
+    private ScreenMode pictureReturnScreen = ScreenMode.CHAT;
     private String composeDraft = "";
     private final ArrayList<ComposeRecipient> composeRecipients = new ArrayList<>();
     private boolean pickingComposeContact;
@@ -498,8 +503,13 @@ public class MainActivity extends Activity {
             header.addView(status);
         }
 
+        LinearLayout searchRow = new LinearLayout(this);
+        searchRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams searchRowParams = new LinearLayout.LayoutParams(-1, dp(42));
+        searchRowParams.topMargin = dp(8);
+
         EditText search = new EditText(this);
-        search.setHint("Search");
+        search.setHint(searchHint(searchFilter));
         search.setText(searchQuery);
         search.setSingleLine(true);
         search.setTextSize(15);
@@ -507,8 +517,7 @@ public class MainActivity extends Activity {
         search.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_search_muted, 0, 0, 0);
         search.setCompoundDrawablePadding(dp(8));
         search.setBackgroundResource(R.drawable.composer_background);
-        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(42));
-        searchParams.topMargin = dp(8);
+        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(0, dp(42), 1);
         search.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -525,7 +534,24 @@ public class MainActivity extends Activity {
             public void afterTextChanged(Editable s) {
             }
         });
-        header.addView(search, searchParams);
+        searchRow.addView(search, searchParams);
+
+        Button filter = new Button(this);
+        filter.setText(searchFilter.label);
+        filter.setAllCaps(false);
+        filter.setTextSize(12);
+        filter.setTextColor(BLACK);
+        filter.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        filter.setSingleLine(true);
+        filter.setMinWidth(0);
+        filter.setPadding(dp(8), 0, dp(8), 0);
+        filter.setBackground(primaryGradientBackground(18));
+        filter.setContentDescription("Search filter: " + searchFilter.label);
+        setFeedbackClickListener(filter, v -> showSearchFilterMenu());
+        LinearLayout.LayoutParams filterParams = new LinearLayout.LayoutParams(dp(92), dp(38));
+        filterParams.leftMargin = dp(8);
+        searchRow.addView(filter, filterParams);
+        header.addView(searchRow, searchRowParams);
 
         FrameLayout content = new FrameLayout(this);
         content.setBackgroundColor(BLACK);
@@ -542,6 +568,7 @@ public class MainActivity extends Activity {
         cachedInboxList = inboxList;
         cachedInboxBlocked = showingBlocked;
         cachedInboxQuery = searchQuery;
+        cachedInboxFilter = searchFilter;
 
         if (!showingBlocked) {
             Button compose = new Button(this);
@@ -911,6 +938,7 @@ public class MainActivity extends Activity {
         options.add(showingBlocked ? "Normal inbox" : "Spam & blocked");
         if (!showingBlocked) {
             options.add("Mark all messages read");
+            options.add("Trash");
         }
         options.add("Appearance & typing");
         options.add("Spam protection");
@@ -923,6 +951,8 @@ public class MainActivity extends Activity {
                 showInbox();
             } else if ("Mark all messages read".equals(choice)) {
                 markAllMessagesRead();
+            } else if ("Trash".equals(choice)) {
+                showTrashPage();
             } else if ("Appearance & typing".equals(choice)) {
                 showAppearanceSettingsMenu();
             } else if ("Spam protection".equals(choice)) {
@@ -1201,11 +1231,13 @@ public class MainActivity extends Activity {
         }
         boolean blocked = showingBlocked;
         String query = searchQuery;
-        String cacheKey = inboxCacheKey(blocked, query);
+        SearchFilter filter = searchFilter;
+        String cacheKey = inboxCacheKey(blocked, query, filter);
         if (inboxList.getChildCount() == 0) {
             List<Conversation> cachedRows = inboxRowsCache.get(cacheKey);
-            if (cachedRows == null && !blocked && TextUtils.isEmpty(query)) {
+            if (cachedRows == null && !blocked && TextUtils.isEmpty(query) && filter == SearchFilter.ALL) {
                 cachedRows = InboxSnapshotStore.load(this);
+                TrashStore.removeHiddenOrRestoreNew(this, cachedRows);
                 if (!cachedRows.isEmpty()) {
                     inboxRowsCache.put(cacheKey, cachedRows);
                 }
@@ -1220,6 +1252,7 @@ public class MainActivity extends Activity {
         long lastLoadedAt = blocked ? blockedInboxLoadedAtMillis : normalInboxLoadedAtMillis;
         if (!force
                 && TextUtils.isEmpty(query)
+                && filter == SearchFilter.ALL
                 && inboxRowsCache.get(cacheKey) != null
                 && System.currentTimeMillis() - lastLoadedAt < INBOX_REFRESH_THROTTLE_MILLIS) {
             return;
@@ -1228,11 +1261,11 @@ public class MainActivity extends Activity {
         Context appContext = getApplicationContext();
         cancelTask(inboxLoadTask);
         inboxLoadTask = inboxLoader.submit(() -> {
-            List<Conversation> conversations = SmsStore.loadConversations(appContext, blocked, query);
+            List<Conversation> conversations = SmsStore.loadConversations(appContext, blocked, query, filter);
             if (Thread.currentThread().isInterrupted()) {
                 return;
             }
-            if (!blocked && TextUtils.isEmpty(query)) {
+            if (!blocked && TextUtils.isEmpty(query) && filter == SearchFilter.ALL) {
                 InboxSnapshotStore.save(appContext, conversations);
             }
             runOnUiThread(() -> {
@@ -1262,9 +1295,11 @@ public class MainActivity extends Activity {
                 || TextUtils.isEmpty(body)
                 || showingBlocked
                 || !TextUtils.isEmpty(searchQuery)
+                || searchFilter != SearchFilter.ALL
                 || MessageNotifier.shouldSuppressIncoming(this, address, "", body)) {
             return;
         }
+        TrashStore.restore(this, address);
         String cacheKey = inboxCacheKey(false, "");
         List<Conversation> cached = inboxRowsCache.get(cacheKey);
         if (cached == null) {
@@ -1357,6 +1392,7 @@ public class MainActivity extends Activity {
         pendingIncomingAddress = "";
         pendingIncomingBody = "";
         pendingIncomingDateMillis = 0L;
+        TrashStore.restore(this, address);
         if (TextUtils.isEmpty(body)) {
             return;
         }
@@ -1430,6 +1466,37 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void showSearchFilterMenu() {
+        ArrayList<String> options = new ArrayList<>();
+        for (SearchFilter filter : SearchFilter.values()) {
+            options.add(filter == searchFilter ? filter.label + " (selected)" : filter.label);
+        }
+        showCrowMenu("Search by", options, choice -> {
+            String selected = choice.replace(" (selected)", "");
+            for (SearchFilter filter : SearchFilter.values()) {
+                if (filter.label.equals(selected)) {
+                    searchFilter = filter;
+                    discardCachedInboxScreen();
+                    showInbox();
+                    return;
+                }
+            }
+        });
+    }
+
+    static String searchHint(SearchFilter filter) {
+        if (filter == SearchFilter.PEOPLE) {
+            return "Search people";
+        }
+        if (filter == SearchFilter.MESSAGE_TEXT) {
+            return "Search message text";
+        }
+        if (filter == SearchFilter.PICTURES) {
+            return "Search pictures";
+        }
+        return "Search";
+    }
+
     private void prefetchVisibleThreads(List<Conversation> conversations, boolean blockedOnly) {
         if (conversations == null || conversations.isEmpty()) {
             return;
@@ -1495,8 +1562,14 @@ public class MainActivity extends Activity {
     }
 
     static String inboxCacheKey(boolean blocked, String query) {
+        return inboxCacheKey(blocked, query, SearchFilter.ALL);
+    }
+
+    static String inboxCacheKey(boolean blocked, String query, SearchFilter filter) {
         String safeQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
-        return (blocked ? "blocked" : "inbox") + "|" + safeQuery;
+        SearchFilter safeFilter = filter == null ? SearchFilter.ALL : filter;
+        String filterKey = safeFilter == SearchFilter.ALL ? "" : safeFilter.name() + "|";
+        return (blocked ? "blocked" : "inbox") + "|" + filterKey + safeQuery;
     }
 
     static boolean sameConversationRows(List<Conversation> first, List<Conversation> second) {
@@ -1530,7 +1603,8 @@ public class MainActivity extends Activity {
         return cachedInboxRoot != null
                 && cachedInboxList != null
                 && cachedInboxBlocked == showingBlocked
-                && TextUtils.equals(cachedInboxQuery, searchQuery);
+                && TextUtils.equals(cachedInboxQuery, searchQuery)
+                && cachedInboxFilter == searchFilter;
     }
 
     private void invalidateInboxPresentationCache() {
@@ -1845,6 +1919,17 @@ public class MainActivity extends Activity {
             titleBlock.addView(subtitle, new LinearLayout.LayoutParams(-1, -2));
         }
         bar.addView(titleBlock, new LinearLayout.LayoutParams(0, -1, 1));
+
+        if (!groupConversation) {
+            ImageButton call = new ImageButton(this);
+            call.setImageResource(android.R.drawable.ic_menu_call);
+            call.setColorFilter(MINT);
+            call.setBackgroundColor(Color.TRANSPARENT);
+            call.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            call.setContentDescription("Call " + conversation.name);
+            setFeedbackClickListener(call, v -> callContact(conversation.address));
+            bar.addView(call, new LinearLayout.LayoutParams(dp(42), dp(40)));
+        }
 
         FrameLayout menu = threeDotMenuButton("Conversation options");
         setFeedbackClickListener(menu, v -> showConversationMenu(conversation));
@@ -2174,6 +2259,24 @@ public class MainActivity extends Activity {
             stack.addView(bubble);
         }
 
+        String verificationCode = message.outgoing ? "" : VerificationCodeUtil.findCode(displayText);
+        if (!TextUtils.isEmpty(verificationCode)) {
+            Button copyCode = new Button(this);
+            copyCode.setText(getString(R.string.copy_verification_code, verificationCode));
+            copyCode.setAllCaps(false);
+            copyCode.setTextColor(TEXT);
+            copyCode.setTextSize(12);
+            copyCode.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            copyCode.setMinWidth(0);
+            copyCode.setPadding(dp(10), 0, dp(10), 0);
+            copyCode.setBackground(roundedBackground(SURFACE, 16));
+            copyCode.setContentDescription("Copy verification code " + verificationCode);
+            setFeedbackClickListener(copyCode, v -> copyVerificationCode(verificationCode));
+            LinearLayout.LayoutParams codeParams = new LinearLayout.LayoutParams(-2, dp(34));
+            codeParams.topMargin = dp(4);
+            stack.addView(copyCode, codeParams);
+        }
+
         if (!groupedWithNext || !TextUtils.isEmpty(message.status)) {
             TextView timestamp = text(messageTimestampLabel(message), TextSizePrefs.timestampSp(this), MUTED, Typeface.NORMAL);
             timestamp.setPadding(dp(6), dp(3), dp(6), 0);
@@ -2398,11 +2501,22 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "Copied.", Toast.LENGTH_SHORT).show();
     }
 
+    private void copyVerificationCode(String code) {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null || TextUtils.isEmpty(code)) {
+            return;
+        }
+        clipboard.setPrimaryClip(ClipData.newPlainText("Verification code", code));
+        Toast.makeText(this, "Code copied.", Toast.LENGTH_SHORT).show();
+    }
+
     private void showPicture(String imageUri) {
         Uri uri = messageImageUri(imageUri);
         if (uri == null) {
             return;
         }
+        ScreenMode returnScreen = screenMode;
+        pictureReturnScreen = returnScreen;
         screenMode = ScreenMode.PICTURE;
         Conversation returnConversation = activeConversation;
         activeMessagesList = null;
@@ -2422,7 +2536,9 @@ public class MainActivity extends Activity {
         back.setContentDescription("Back to conversation");
         back.setScaleType(ImageView.ScaleType.CENTER);
         setFeedbackClickListener(back, v -> {
-            if (returnConversation != null) {
+            if (returnScreen == ScreenMode.MEDIA && returnConversation != null) {
+                showConversationMediaPage(returnConversation);
+            } else if (returnConversation != null) {
                 showChat(returnConversation, activeThreadBlockedOnly);
             } else {
                 showInbox();
@@ -3000,6 +3116,7 @@ public class MainActivity extends Activity {
 
         options.add("Conversation info");
         options.add("Search conversation");
+        options.add("Photos & media");
         options.add(pinned ? "Unpin conversation" : "Pin conversation");
         if (!group) {
             options.add("Scheduling");
@@ -3012,6 +3129,8 @@ public class MainActivity extends Activity {
                 showConversationInfoPage(conversation);
             } else if ("Search conversation".equals(choice)) {
                 showConversationSearchDialog();
+            } else if ("Photos & media".equals(choice)) {
+                showConversationMediaPage(conversation);
             } else if ("Pin conversation".equals(choice) || "Unpin conversation".equals(choice)) {
                 setConversationPinned(conversation, "Pin conversation".equals(choice));
             } else if ("Scheduling".equals(choice)) {
@@ -3079,7 +3198,7 @@ public class MainActivity extends Activity {
         if (!group) {
             options.add(blocked ? "Unblock sender" : "Block sender");
         }
-        options.add("Delete conversation");
+        options.add("Move to trash");
         showCrowMenu("Privacy & cleanup", options, choice -> {
             if ("Mark as spam".equals(choice)) {
                 markConversationSpam(conversation);
@@ -3087,10 +3206,104 @@ public class MainActivity extends Activity {
                 unmarkConversationSpam(conversation);
             } else if ("Block sender".equals(choice) || "Unblock sender".equals(choice)) {
                 showBlockDialog(conversation);
-            } else {
+            } else if ("Move to trash".equals(choice)) {
                 showDeleteConversationDialog(conversation);
             }
         });
+    }
+
+    private void showTrashPage() {
+        screenMode = ScreenMode.TRASH;
+        activeConversation = null;
+        activeMessagesList = null;
+        activeScrollView = null;
+        styleSystemBars();
+        root = installScreenRoot();
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(8), 0, dp(18), 0);
+        header.setBackground(headerBackground());
+        root.addView(header, new LinearLayout.LayoutParams(-1, dp(HEADER_BAR_HEIGHT_DP)));
+
+        ImageButton back = new ImageButton(this);
+        back.setImageResource(R.drawable.ic_arrow_back_mint);
+        back.setBackgroundColor(Color.TRANSPARENT);
+        back.setContentDescription("Back to messages");
+        back.setScaleType(ImageView.ScaleType.CENTER);
+        setFeedbackClickListener(back, v -> showInbox());
+        header.addView(back, new LinearLayout.LayoutParams(dp(52), dp(48)));
+
+        TextView title = text("Trash", 22, TEXT, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER_VERTICAL);
+        header.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
+
+        List<TrashStore.Item> trashed = TrashStore.all(this);
+        if (trashed.isEmpty()) {
+            root.addView(emptyStateView("Trash is empty", "Conversations moved here can be restored.", true), new LinearLayout.LayoutParams(-1, 0, 1));
+            return;
+        }
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(10), dp(12), dp(10), dp(28));
+        scroll.addView(list);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        for (TrashStore.Item item : trashed) {
+            list.addView(trashConversationRow(item));
+        }
+    }
+
+    private View trashConversationRow(TrashStore.Item item) {
+        Conversation conversation = item.conversation();
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(8), dp(10), dp(8), dp(10));
+        row.setMinimumHeight(dp(76));
+        applyPressFeedback(row);
+        setFeedbackClickListener(row, v -> showTrashActions(item));
+        row.addView(contactAvatar(conversation, 46, 18));
+
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.setPadding(dp(12), 0, dp(8), 0);
+        TextView name = text(conversation.name, TextSizePrefs.inboxNameSp(this), TEXT, Typeface.BOLD);
+        name.setSingleLine(true);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        labels.addView(name);
+        TextView snippet = text(conversation.snippet, TextSizePrefs.inboxPreviewSp(this), MUTED, Typeface.NORMAL);
+        snippet.setSingleLine(true);
+        snippet.setEllipsize(TextUtils.TruncateAt.END);
+        snippet.setPadding(0, dp(4), 0, 0);
+        labels.addView(snippet);
+        row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+
+        TextView date = text(SmsStore.formatTime(this, item.trashedAtMillis), 12, MUTED, Typeface.NORMAL);
+        row.addView(date);
+        return row;
+    }
+
+    private void showTrashActions(TrashStore.Item item) {
+        showCrowMenu(item.name, java.util.Arrays.asList("Restore", "Delete forever"), choice -> {
+            if ("Restore".equals(choice)) {
+                TrashStore.restore(this, item.address);
+                invalidateInboxPresentationCache();
+                Toast.makeText(this, "Conversation restored.", Toast.LENGTH_SHORT).show();
+                showTrashPage();
+            } else {
+                confirmDeleteForever(item);
+            }
+        });
+    }
+
+    private void confirmDeleteForever(TrashStore.Item item) {
+        new AlertDialog.Builder(this)
+                .setTitle("Delete forever?")
+                .setMessage("This permanently removes this conversation from your phone and cannot be undone.")
+                .setPositiveButton("Delete forever", (dialog, which) -> deleteConversationForever(item.conversation(), true))
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     private void showCrowMenu(String title, List<String> options, MenuChoiceHandler handler) {
@@ -3215,6 +3428,105 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void showConversationMediaPage(Conversation conversation) {
+        if (conversation == null) {
+            showInbox();
+            return;
+        }
+        screenMode = ScreenMode.MEDIA;
+        activeConversation = conversation;
+        activeMessagesList = null;
+        activeScrollView = null;
+        styleSystemBars();
+        root = installScreenRoot();
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(8), 0, dp(18), 0);
+        header.setBackground(headerBackground());
+        root.addView(header, new LinearLayout.LayoutParams(-1, dp(HEADER_BAR_HEIGHT_DP)));
+
+        ImageButton back = new ImageButton(this);
+        back.setImageResource(R.drawable.ic_arrow_back_mint);
+        back.setBackgroundColor(Color.TRANSPARENT);
+        back.setContentDescription("Back to conversation");
+        back.setScaleType(ImageView.ScaleType.CENTER);
+        setFeedbackClickListener(back, v -> showChat(conversation, activeThreadBlockedOnly));
+        header.addView(back, new LinearLayout.LayoutParams(dp(52), dp(48)));
+
+        TextView title = text("Photos & media", 22, TEXT, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER_VERTICAL);
+        header.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(10), dp(12), dp(10), dp(28));
+        TextView loading = text("Loading pictures...", 15, MUTED, Typeface.NORMAL);
+        loading.setGravity(Gravity.CENTER);
+        loading.setPadding(0, dp(40), 0, 0);
+        content.addView(loading, new LinearLayout.LayoutParams(-1, -2));
+        scroll.addView(content);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        int generation = ++threadLoadGeneration;
+        cancelTask(threadLoadTask);
+        Context appContext = getApplicationContext();
+        threadLoadTask = threadLoader.submit(() -> {
+            List<ChatMessage> messages = SmsStore.loadMessagesForAddress(appContext, conversation.address, activeThreadBlockedOnly);
+            ArrayList<ChatMessage> pictures = new ArrayList<>();
+            for (ChatMessage message : messages) {
+                if (messageImageUri(message.imageUri) != null) {
+                    pictures.add(message);
+                }
+            }
+            runOnUiThread(() -> {
+                if (isDestroyed()
+                        || generation != threadLoadGeneration
+                        || screenMode != ScreenMode.MEDIA
+                        || activeConversation == null
+                        || !sameAddress(activeConversation.address, conversation.address)) {
+                    return;
+                }
+                renderConversationMedia(content, pictures);
+            });
+        });
+    }
+
+    private void renderConversationMedia(LinearLayout content, List<ChatMessage> pictures) {
+        content.removeAllViews();
+        if (pictures == null || pictures.isEmpty()) {
+            content.addView(emptyStateView("No pictures yet", "Pictures from this conversation will appear here.", true), new LinearLayout.LayoutParams(-1, dp(430)));
+            return;
+        }
+        TextView count = text(pictures.size() == 1 ? "1 picture" : pictures.size() + " pictures", 14, MUTED, Typeface.NORMAL);
+        count.setPadding(dp(4), 0, dp(4), dp(10));
+        content.addView(count, new LinearLayout.LayoutParams(-1, -2));
+        for (int start = pictures.size() - 1; start >= 0; start -= 3) {
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.TOP);
+            for (int column = 0; column < 3; column++) {
+                int index = start - column;
+                if (index < 0) {
+                    View spacer = new View(this);
+                    row.addView(spacer, new LinearLayout.LayoutParams(0, dp(112), 1));
+                    continue;
+                }
+                ChatMessage message = pictures.get(index);
+                ImageView image = new ImageView(this);
+                image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                image.setImageURI(messageImageUri(message.imageUri));
+                image.setBackgroundColor(SURFACE);
+                image.setContentDescription("Picture from " + SmsStore.formatMessageTimestamp(this, message.dateMillis));
+                setFeedbackClickListener(image, v -> showPicture(message.imageUri));
+                LinearLayout.LayoutParams imageParams = new LinearLayout.LayoutParams(0, dp(112), 1);
+                imageParams.setMargins(dp(3), dp(3), dp(3), dp(3));
+                row.addView(image, imageParams);
+            }
+            content.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        }
+    }
+
     private void showConversationInfoPage(Conversation conversation) {
         screenMode = ScreenMode.CONVERSATION_INFO;
         activeMessagesList = null;
@@ -3320,7 +3632,8 @@ public class MainActivity extends Activity {
             showChat(conversation, activeThreadBlockedOnly);
             showConversationSearchDialog();
         }));
-        content.addView(actionButton("Delete conversation", v -> showDeleteConversationDialog(conversation)));
+        content.addView(actionButton("Photos & media", v -> showConversationMediaPage(conversation)));
+        content.addView(actionButton("Move to trash", v -> showDeleteConversationDialog(conversation)));
     }
 
     private String conversationStatusText(Conversation conversation) {
@@ -3695,22 +4008,39 @@ public class MainActivity extends Activity {
 
     private void showDeleteConversationDialog(Conversation conversation) {
         new AlertDialog.Builder(this)
-                .setTitle("Delete this conversation?")
-                .setMessage("This removes the text history for this conversation from your phone.")
-                .setPositiveButton("Delete", (dialog, which) -> deleteConversation(conversation))
+                .setTitle("Move this conversation to Trash?")
+                .setMessage("You can restore it later from Trash in the main menu.")
+                .setPositiveButton("Move to Trash", (dialog, which) -> moveConversationToTrash(conversation))
                 .setNegativeButton("Cancel", null)
                 .show();
     }
 
-    private void deleteConversation(Conversation conversation) {
-        discardPendingDraft(conversation.address);
-        int deleted = SmsStore.deleteConversation(this, conversation.threadId, conversation.address);
-        int removedScheduled = deleteScheduledForConversation(conversation.address);
+    private void moveConversationToTrash(Conversation conversation) {
+        flushPendingDraft();
+        TrashStore.moveToTrash(this, conversation);
+        InboxSnapshotStore.remove(this, conversation.address);
         discardCachedInboxScreen();
         discardConversationCaches(conversation.address);
-        Toast.makeText(this, deleted > 0 || removedScheduled > 0 ? "Conversation deleted." : "No messages were deleted.", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Conversation moved to Trash.", Toast.LENGTH_SHORT).show();
         activeConversation = null;
         showInbox();
+    }
+
+    private void deleteConversationForever(Conversation conversation, boolean returnToTrash) {
+        discardPendingDraft(conversation.address);
+        DraftStore.clear(this, conversation.address);
+        int deleted = SmsStore.deleteConversation(this, conversation.threadId, conversation.address);
+        int removedScheduled = deleteScheduledForConversation(conversation.address);
+        TrashStore.restore(this, conversation.address);
+        discardCachedInboxScreen();
+        discardConversationCaches(conversation.address);
+        Toast.makeText(this, deleted > 0 || removedScheduled > 0 ? "Conversation deleted forever." : "Conversation removed from Trash.", Toast.LENGTH_SHORT).show();
+        activeConversation = null;
+        if (returnToTrash) {
+            showTrashPage();
+        } else {
+            showInbox();
+        }
     }
 
     private int deleteScheduledForConversation(String address) {
@@ -4911,11 +5241,20 @@ public class MainActivity extends Activity {
             showInbox();
             return;
         }
-        if ((screenMode == ScreenMode.PICTURE || screenMode == ScreenMode.CONVERSATION_INFO) && activeConversation != null) {
+        if (screenMode == ScreenMode.PICTURE && pictureReturnScreen == ScreenMode.MEDIA && activeConversation != null) {
+            showConversationMediaPage(activeConversation);
+            return;
+        }
+        if ((screenMode == ScreenMode.PICTURE || screenMode == ScreenMode.CONVERSATION_INFO || screenMode == ScreenMode.MEDIA)
+                && activeConversation != null) {
             showChat(activeConversation, activeThreadBlockedOnly);
             return;
         }
         if (screenMode == ScreenMode.COMPOSE || screenMode == ScreenMode.SPAM_RULES) {
+            showInbox();
+            return;
+        }
+        if (screenMode == ScreenMode.TRASH) {
             showInbox();
             return;
         }

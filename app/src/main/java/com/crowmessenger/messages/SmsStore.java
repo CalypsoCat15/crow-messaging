@@ -39,6 +39,11 @@ final class SmsStore {
     }
 
     static List<Conversation> loadConversations(Context context, boolean blockedOnly, String query) {
+        return loadConversations(context, blockedOnly, query, SearchFilter.ALL);
+    }
+
+    static List<Conversation> loadConversations(Context context, boolean blockedOnly, String query, SearchFilter filter) {
+        SearchFilter activeFilter = filter == null ? SearchFilter.ALL : filter;
         Map<String, ConversationBuilder> byThread = new HashMap<>();
         Set<String> hiddenThreads = new HashSet<>();
         ContentResolver resolver = context.getContentResolver();
@@ -79,7 +84,7 @@ final class SmsStore {
                     if (!shouldShowMessage(blockedOnly, blockedSender, keywordSpam)) {
                         continue;
                     }
-                    if (!matchesQuery(context, address, body, query)) {
+                    if (!matchesQuery(context, address, body, query, activeFilter, false)) {
                         continue;
                     }
                     long date = cursor.getLong(3);
@@ -114,17 +119,18 @@ final class SmsStore {
                     builder.unreadCount
             ));
         }
-        for (Conversation localConversation : LocalMmsStore.loadConversations(context, blockedOnly, query)) {
+        for (Conversation localConversation : LocalMmsStore.loadConversations(context, blockedOnly, query, activeFilter)) {
             mergeLocalConversation(conversations, localConversation);
         }
         if (!blockedOnly) {
-            for (Conversation pendingConversation : SmsSender.pendingConversations(context, query)) {
+            for (Conversation pendingConversation : SmsSender.pendingConversations(context, query, activeFilter)) {
                 mergeLocalConversation(conversations, pendingConversation);
             }
         }
         for (DraftStore.Draft draft : DraftStore.drafts(context)) {
-            mergeDraftConversation(context, conversations, draft, blockedOnly, query);
+            mergeDraftConversation(context, conversations, draft, blockedOnly, query, activeFilter);
         }
+        TrashStore.removeHiddenOrRestoreNew(context, conversations);
         conversations.sort((left, right) -> {
             boolean leftPinned = PinnedStore.isPinned(context, left.address);
             boolean rightPinned = PinnedStore.isPinned(context, right.address);
@@ -324,12 +330,13 @@ final class SmsStore {
             List<Conversation> conversations,
             DraftStore.Draft draft,
             boolean blockedOnly,
-            String query
+            String query,
+            SearchFilter filter
     ) {
         if (draft == null || TextUtils.isEmpty(draft.address) || blockedOnly
                 || Blocklist.isBlocked(context, draft.address)
                 || SpamFilter.isMarkedSpam(context, draft.address)
-                || !matchesQuery(context, draft.address, draft.body, query)) {
+                || !matchesQuery(context, draft.address, draft.body, query, filter, false)) {
             return;
         }
         int existingIndex = conversationIndex(conversations, draft.address);
@@ -767,15 +774,16 @@ final class SmsStore {
         return "";
     }
 
-    private static boolean matchesQuery(Context context, String address, String body, String query) {
-        if (TextUtils.isEmpty(query)) {
-            return true;
-        }
-        String needle = query.toLowerCase(Locale.getDefault());
+    private static boolean matchesQuery(
+            Context context,
+            String address,
+            String body,
+            String query,
+            SearchFilter filter,
+            boolean hasPicture
+    ) {
         String name = displayNameForAddress(context, address);
-        return address.toLowerCase(Locale.getDefault()).contains(needle)
-                || (!TextUtils.isEmpty(name) && name.toLowerCase(Locale.getDefault()).contains(needle))
-                || (!TextUtils.isEmpty(body) && body.toLowerCase(Locale.getDefault()).contains(needle));
+        return (filter == null ? SearchFilter.ALL : filter).matches(query, address, name, body, hasPicture);
     }
 
     private static List<Conversation> sampleConversations() {
