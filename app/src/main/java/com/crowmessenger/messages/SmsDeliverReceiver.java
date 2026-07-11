@@ -6,22 +6,44 @@ import android.content.Intent;
 import android.provider.Telephony;
 import android.telephony.SmsMessage;
 import android.text.TextUtils;
+import android.util.Log;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class SmsDeliverReceiver extends BroadcastReceiver {
+    private static final String TAG = "CrowSmsDelivery";
+
     interface IncomingSmsSaver {
         boolean save(Context context, String address, String body, long dateMillis);
     }
 
     private static final IncomingSmsSaver ANDROID_SMS_SAVER = SmsStore::saveIncomingSms;
+    private static final ExecutorService DELIVERY_EXECUTOR = Executors.newSingleThreadExecutor(
+            task -> new Thread(task, "crow-sms-delivery")
+    );
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (intent == null || !Telephony.Sms.Intents.SMS_DELIVER_ACTION.equals(intent.getAction())) {
+        if (context == null || intent == null || !Telephony.Sms.Intents.SMS_DELIVER_ACTION.equals(intent.getAction())) {
             return;
         }
+        PendingResult pendingResult = goAsync();
+        Context appContext = context.getApplicationContext();
+        DELIVERY_EXECUTOR.execute(() -> {
+            try {
+                handleDelivery(appContext, intent);
+            } catch (RuntimeException ex) {
+                Log.e(TAG, "Incoming SMS delivery failed", ex);
+            } finally {
+                pendingResult.finish();
+            }
+        });
+    }
+
+    static void handleDelivery(Context context, Intent intent) {
         SmsMessage[] messages = Telephony.Sms.Intents.getMessagesFromIntent(intent);
         if (messages == null || messages.length == 0) {
             return;
@@ -43,7 +65,7 @@ public class SmsDeliverReceiver extends BroadcastReceiver {
                 incomingByAddress.put(key, incoming);
             }
             incoming.body.append(body);
-            incoming.dateMillis = Math.min(incoming.dateMillis, message.getTimestampMillis());
+            incoming.dateMillis = earliestPositiveTimestamp(incoming.dateMillis, message.getTimestampMillis());
         }
 
         for (IncomingSms incoming : incomingByAddress.values()) {
@@ -53,18 +75,29 @@ public class SmsDeliverReceiver extends BroadcastReceiver {
 
     static boolean saveNotifyAndBroadcast(Context context, IncomingSms incoming, IncomingSmsSaver saver) {
         String body = incoming.body.toString();
+        long receivedAt = incoming.dateMillis > 0 ? incoming.dateMillis : System.currentTimeMillis();
         boolean saved;
         try {
-            saved = saver.save(context, incoming.address, body, incoming.dateMillis);
+            saved = saver.save(context, incoming.address, body, receivedAt);
         } catch (RuntimeException ex) {
             saved = false;
         }
         if (!saved) {
-            LocalMmsStore.saveNotice(context, incoming.address, body, incoming.dateMillis);
+            LocalMmsStore.saveNotice(context, incoming.address, body, receivedAt);
         }
         MessageNotifier.showIncoming(context, incoming.address, body);
-        MessageUpdateBroadcaster.broadcastIncomingSms(context, incoming.address, body, incoming.dateMillis);
+        MessageUpdateBroadcaster.broadcastIncomingSms(context, incoming.address, body, receivedAt);
         return saved;
+    }
+
+    static long earliestPositiveTimestamp(long first, long second) {
+        if (first <= 0) {
+            return Math.max(0, second);
+        }
+        if (second <= 0) {
+            return first;
+        }
+        return Math.min(first, second);
     }
 
     static final class IncomingSms {

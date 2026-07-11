@@ -64,6 +64,27 @@ public class SmsDeliverReceiverTest {
         assertTrue(LocalMmsStore.loadForAddress(context, "15551234567").isEmpty());
     }
 
+    @Test
+    public void earliestPositiveTimestamp_ignoresInvalidMultipartTimes() {
+        assertEquals(2000L, SmsDeliverReceiver.earliestPositiveTimestamp(0L, 2000L));
+        assertEquals(2000L, SmsDeliverReceiver.earliestPositiveTimestamp(2000L, 0L));
+        assertEquals(1000L, SmsDeliverReceiver.earliestPositiveTimestamp(2000L, 1000L));
+    }
+
+    @Test
+    public void saveNotifyAndBroadcast_replacesMissingTimestamp() {
+        SmsDeliverReceiver.IncomingSms incoming = incoming("15551234567", "hello", 0L);
+        long[] savedAt = new long[1];
+
+        boolean saved = SmsDeliverReceiver.saveNotifyAndBroadcast(context, incoming, (c, a, b, date) -> {
+            savedAt[0] = date;
+            return true;
+        });
+
+        assertTrue(saved);
+        assertTrue(savedAt[0] > 0L);
+    }
+
     private SmsDeliverReceiver.IncomingSms incoming(String address, String body, long dateMillis) {
         SmsDeliverReceiver.IncomingSms incoming = new SmsDeliverReceiver.IncomingSms(address, dateMillis);
         incoming.body.append(body);
