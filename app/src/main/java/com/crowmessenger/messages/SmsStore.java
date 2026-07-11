@@ -533,7 +533,10 @@ final class SmsStore {
     }
 
     static void markAddressRead(Context context, String address) {
-        String threadId = findThreadIdForAddress(context, address);
+        markConversationRead(context, findThreadIdForAddress(context, address), address);
+    }
+
+    static void markConversationRead(Context context, String threadId, String address) {
         if (!TextUtils.isEmpty(threadId)) {
             markThreadRead(context, threadId);
         } else {

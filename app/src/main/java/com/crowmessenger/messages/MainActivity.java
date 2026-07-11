@@ -239,7 +239,7 @@ public class MainActivity extends Activity {
                 }
             } else if (screenMode == ScreenMode.INBOX && activityResumed) {
                 showIncomingConversationImmediately(address, body, dateMillis);
-                refreshInboxList(TextUtils.isEmpty(body) || showingBlocked);
+                refreshInboxList(true);
             }
         }
     };
@@ -449,7 +449,7 @@ public class MainActivity extends Activity {
             inboxList = cachedInboxList;
             setContentView(root);
             applySystemBarInsets(root);
-            refreshInboxList();
+            refreshInboxList(true);
             return;
         }
         root = installScreenRoot();
@@ -546,7 +546,7 @@ public class MainActivity extends Activity {
             content.addView(compose, composeParams);
         }
 
-        refreshInboxList();
+        refreshInboxList(previousScreen != ScreenMode.INBOX);
     }
 
     private void showComposePage(boolean reset) {
@@ -1201,12 +1201,12 @@ public class MainActivity extends Activity {
                 InboxSnapshotStore.save(appContext, conversations);
             }
             runOnUiThread(() -> {
+                if (isDestroyed() || inboxList == null || generation != inboxLoadGeneration) {
+                    return;
+                }
                 List<Conversation> snapshot = new ArrayList<>(conversations);
                 boolean rowsChanged = !sameConversationRows(inboxRowsCache.get(cacheKey), snapshot);
                 inboxRowsCache.put(cacheKey, snapshot);
-                if (inboxList == null || generation != inboxLoadGeneration) {
-                    return;
-                }
                 if (TextUtils.isEmpty(query)) {
                     if (blocked) {
                         blockedInboxLoadedAtMillis = System.currentTimeMillis();
@@ -1236,14 +1236,7 @@ public class MainActivity extends Activity {
             cached = InboxSnapshotStore.load(this);
         }
         ArrayList<Conversation> updated = new ArrayList<>(cached);
-        Conversation previous = null;
-        for (int index = updated.size() - 1; index >= 0; index--) {
-            Conversation row = updated.get(index);
-            if (row != null && sameAddress(row.address, address)) {
-                previous = row;
-                updated.remove(index);
-            }
-        }
+        Conversation previous = removeConversationRows(updated, address);
         long safeDate = dateMillis > 0L ? dateMillis : System.currentTimeMillis();
         if (previous != null
                 && TextUtils.equals(previous.snippet, body)
@@ -1263,14 +1256,7 @@ public class MainActivity extends Activity {
                             : previous.unreadCount + 1
             ));
         }
-        updated.sort((left, right) -> {
-            boolean leftPinned = PinnedStore.isPinned(this, left.address);
-            boolean rightPinned = PinnedStore.isPinned(this, right.address);
-            if (leftPinned != rightPinned) {
-                return leftPinned ? -1 : 1;
-            }
-            return Long.compare(right.dateMillis, left.dateMillis);
-        });
+        sortInboxRows(updated);
         inboxRowsCache.put(cacheKey, updated);
         InboxSnapshotStore.save(this, updated);
         renderInboxRows(updated, false, cacheKey);
@@ -1319,14 +1305,7 @@ public class MainActivity extends Activity {
             cached = InboxSnapshotStore.load(this);
         }
         ArrayList<Conversation> updated = new ArrayList<>(cached);
-        Conversation previous = null;
-        for (int index = updated.size() - 1; index >= 0; index--) {
-            Conversation row = updated.get(index);
-            if (row != null && sameAddress(row.address, address)) {
-                previous = row;
-                updated.remove(index);
-            }
-        }
+        Conversation previous = removeConversationRows(updated, address);
         String snippet = TextUtils.isEmpty(body) && hasImage ? LocalMmsStore.PICTURE_MESSAGE : body;
         updated.add(new Conversation(
                 previous == null ? "" : previous.threadId,
@@ -1337,7 +1316,27 @@ public class MainActivity extends Activity {
                 dateMillis > 0L ? dateMillis : System.currentTimeMillis(),
                 previous == null ? 0 : previous.unreadCount
         ));
-        updated.sort((left, right) -> {
+        sortInboxRows(updated);
+        inboxRowsCache.put(cacheKey, updated);
+        InboxSnapshotStore.save(this, updated);
+    }
+
+    static Conversation removeConversationRows(List<Conversation> conversations, String address) {
+        Conversation newest = null;
+        for (int index = conversations.size() - 1; index >= 0; index--) {
+            Conversation row = conversations.get(index);
+            if (row != null && AddressUtil.sameConversationAddress(row.address, address)) {
+                if (newest == null || row.dateMillis > newest.dateMillis) {
+                    newest = row;
+                }
+                conversations.remove(index);
+            }
+        }
+        return newest;
+    }
+
+    private void sortInboxRows(List<Conversation> conversations) {
+        conversations.sort((left, right) -> {
             boolean leftPinned = PinnedStore.isPinned(this, left.address);
             boolean rightPinned = PinnedStore.isPinned(this, right.address);
             if (leftPinned != rightPinned) {
@@ -1345,8 +1344,6 @@ public class MainActivity extends Activity {
             }
             return Long.compare(right.dateMillis, left.dateMillis);
         });
-        inboxRowsCache.put(cacheKey, updated);
-        InboxSnapshotStore.save(this, updated);
     }
 
     private void prefetchVisibleThreads(List<Conversation> conversations, boolean blockedOnly) {
@@ -1989,12 +1986,7 @@ public class MainActivity extends Activity {
         String address = conversation.address;
         Context appContext = getApplicationContext();
         stateWriter.submit(() -> {
-            if (!TextUtils.isEmpty(threadId)) {
-                SmsStore.markThreadRead(appContext, threadId);
-                LocalMmsStore.markAddressRead(appContext, address);
-            } else {
-                SmsStore.markAddressRead(appContext, address);
-            }
+            SmsStore.markConversationRead(appContext, threadId, address);
             MessageNotifier.clearIncomingForAddress(appContext, address);
             runOnUiThread(() -> {
                 if (isDestroyed()) {
@@ -2009,11 +2001,22 @@ public class MainActivity extends Activity {
     }
 
     private void markAllMessagesRead() {
-        SmsStore.markAllRead(this);
-        LocalMmsStore.markAllRead(this);
-        MessageNotifier.clearAllIncoming(this);
-        Toast.makeText(this, "All messages marked read.", Toast.LENGTH_SHORT).show();
-        refreshInboxList(true);
+        Context appContext = getApplicationContext();
+        stateWriter.submit(() -> {
+            SmsStore.markAllRead(appContext);
+            LocalMmsStore.markAllRead(appContext);
+            MessageNotifier.clearAllIncoming(appContext);
+            runOnUiThread(() -> {
+                if (isDestroyed()) {
+                    return;
+                }
+                invalidateInboxPresentationCache();
+                Toast.makeText(this, "All messages marked read.", Toast.LENGTH_SHORT).show();
+                if (screenMode == ScreenMode.INBOX) {
+                    refreshInboxList(true);
+                }
+            });
+        });
     }
 
     private View messageBubble(ChatMessage message) {
@@ -2517,19 +2520,23 @@ public class MainActivity extends Activity {
                     requestedQuery,
                     requestedLimit
             );
+            if (Thread.currentThread().isInterrupted()) {
+                return;
+            }
             runOnUiThread(() -> {
+                if (isDestroyed()
+                        || activeConversation == null
+                        || !sameAddress(activeConversation.address, conversation.address)
+                        || generation != threadLoadGeneration
+                        || activeMessagesList == null) {
+                    return;
+                }
                 List<ChatMessage> rows = result.rows;
                 List<ChatMessage> snapshot = new ArrayList<>(rows);
                 boolean rowsChanged = true;
                 if (TextUtils.isEmpty(requestedQuery)) {
                     rowsChanged = !sameMessageRows(threadRowsCache.get(cacheKey), snapshot);
                     threadRowsCache.put(cacheKey, snapshot);
-                }
-                if (activeConversation == null
-                        || !sameAddress(activeConversation.address, conversation.address)
-                        || generation != threadLoadGeneration
-                        || activeMessagesList == null) {
-                    return;
                 }
                 boolean olderStateChanged = activeThreadHasOlderMessages != result.hasOlder;
                 activeThreadHasOlderMessages = result.hasOlder;
@@ -4686,7 +4693,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (screenMode == ScreenMode.INBOX) {
-            refreshInboxList();
+            refreshInboxList(true);
         } else if (screenMode == ScreenMode.CHAT) {
             markConversationReadAsync(activeConversation);
             boolean searchActive = !TextUtils.isEmpty(threadSearchQuery);

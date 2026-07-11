@@ -13,15 +13,20 @@ public class HeadlessSmsSendService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         ReplyRequest request = replyRequest(intent);
-        if (request != null) {
+        if (request == null) {
+            stopSelf(startId);
+            return START_NOT_STICKY;
+        }
+        new Thread(() -> {
             try {
                 SmsSender.sendAndRecord(this, request.address, request.body);
                 MessageUpdateBroadcaster.broadcast(this, request.address);
             } catch (SmsSender.SendException ex) {
                 MessageNotifier.showSendFailed(this, request.address, ex.getMessage());
+            } finally {
+                stopSelf(startId);
             }
-        }
-        stopSelf(startId);
+        }, "crow-respond-via-message").start();
         return START_NOT_STICKY;
     }
 

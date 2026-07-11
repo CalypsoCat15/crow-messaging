@@ -214,6 +214,22 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void removeConversationRows_deduplicatesEquivalentAddressesAndKeepsNewestDetails() {
+        java.util.ArrayList<Conversation> rows = new java.util.ArrayList<>();
+        rows.add(new Conversation("1", "15551234567", "Older", "", "old", 1000L, 1));
+        rows.add(new Conversation("2", "15557654321", "Other", "", "other", 1500L, 0));
+        rows.add(new Conversation("1", "+1 (555) 123-4567", "Newer", "", "new", 2000L, 2));
+
+        Conversation previous = MainActivity.removeConversationRows(rows, "+1 555 123 4567");
+
+        assertNotNull(previous);
+        assertEquals("Newer", previous.name);
+        assertEquals(2000L, previous.dateMillis);
+        assertEquals(1, rows.size());
+        assertEquals("15557654321", rows.get(0).address);
+    }
+
+    @Test
     public void keyboardScrollBottomPadding_reservesTranslatedComposerOverlay() {
         assertEquals(612, MainActivity.keyboardScrollBottomPadding(true, 600, 12));
         assertEquals(12, MainActivity.keyboardScrollBottomPadding(true, -10, 12));

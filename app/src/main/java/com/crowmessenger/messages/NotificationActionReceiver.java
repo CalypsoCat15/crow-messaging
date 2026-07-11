@@ -23,8 +23,9 @@ public class NotificationActionReceiver extends BroadcastReceiver {
         if (TextUtils.isEmpty(address)) {
             return;
         }
+        Context appContext = context.getApplicationContext();
         if (ACTION_MARK_READ.equals(action)) {
-            markRead(context, address);
+            runAsync("crow-notification-read", () -> markRead(appContext, address));
             return;
         }
         if (!ACTION_REPLY.equals(action)) {
@@ -34,17 +35,22 @@ public class NotificationActionReceiver extends BroadcastReceiver {
         if (TextUtils.isEmpty(reply)) {
             return;
         }
+        runAsync("crow-notification-reply", () -> {
+            if (sendReply(appContext, address, reply.toString().trim())) {
+                markRead(appContext, address);
+            }
+        });
+    }
+
+    private void runAsync(String threadName, Runnable action) {
         PendingResult pendingResult = goAsync();
-        Context appContext = context.getApplicationContext();
         new Thread(() -> {
             try {
-                if (sendReply(appContext, address, reply.toString().trim())) {
-                    markRead(appContext, address);
-                }
+                action.run();
             } finally {
                 pendingResult.finish();
             }
-        }, "crow-notification-reply").start();
+        }, threadName).start();
     }
 
     static CharSequence replyText(Intent intent) {

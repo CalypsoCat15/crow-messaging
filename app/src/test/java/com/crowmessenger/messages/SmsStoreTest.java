@@ -36,6 +36,23 @@ public class SmsStoreTest {
     }
 
     @Test
+    public void markConversationRead_alwaysClearsLocalMmsUnreadState() {
+        Context context = RuntimeEnvironment.getApplication();
+        context.getSharedPreferences("local_mms", Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .commit();
+        String address = "15551234567";
+        LocalMmsStore.saveNotice(context, address, "Picture message", 1000L);
+
+        SmsStore.markConversationRead(context, "12", address);
+
+        List<Conversation> conversations = LocalMmsStore.loadConversations(context, false, "");
+        assertEquals(1, conversations.size());
+        assertEquals(0, conversations.get(0).unreadCount);
+    }
+
+    @Test
     public void mergeLocalConversation_addsUnreadCountToExistingSmsThread() {
         List<Conversation> conversations = new ArrayList<>();
         conversations.add(new Conversation(
