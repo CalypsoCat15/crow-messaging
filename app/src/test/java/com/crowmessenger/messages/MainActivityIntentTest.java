@@ -237,6 +237,12 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void composerBottomPadding_removesGapOnlyWhileKeyboardIsOpen() {
+        assertEquals(0, MainActivity.composerBottomPaddingDp(true));
+        assertEquals(12, MainActivity.composerBottomPaddingDp(false));
+    }
+
+    @Test
     public void scaledImageHeight_preservesAspectRatioWithinMessageBounds() {
         assertEquals(300, MainActivity.scaledImageHeight(300, 160, 360, 1000, 1000));
         assertEquals(160, MainActivity.scaledImageHeight(300, 160, 360, 2000, 500));

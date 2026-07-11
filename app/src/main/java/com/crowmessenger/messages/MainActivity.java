@@ -119,7 +119,7 @@ public class MainActivity extends Activity {
     private static final String STATE_COMPOSE_RECIPIENT_NAMES = "state_compose_recipient_names";
     private static final int RECENT_THREAD_LIMIT = 140;
     private static final int COMPOSER_BOTTOM_PADDING_DP = 12;
-    private static final int COMPOSER_KEYBOARD_BOTTOM_PADDING_DP = 12;
+    private static final int COMPOSER_KEYBOARD_BOTTOM_PADDING_DP = 0;
     private static final int HEADER_BAR_HEIGHT_DP = 56;
     private static final int INBOX_ACTION_HEIGHT_DP = 48;
     private static final int INBOX_ACTION_BOTTOM_MARGIN_DP = 14;
@@ -4610,7 +4610,7 @@ public class MainActivity extends Activity {
             boolean keyboardVisible = coveredHeight > dp(180);
             boolean composerHeightChanged = previousComposerHeight[0] != 0
                     && previousComposerHeight[0] != composer.getHeight();
-            int bottomPadding = dp(keyboardVisible ? COMPOSER_KEYBOARD_BOTTOM_PADDING_DP : COMPOSER_BOTTOM_PADDING_DP);
+            int bottomPadding = dp(composerBottomPaddingDp(keyboardVisible));
             if (composer.getPaddingBottom() != bottomPadding) {
                 composer.setPadding(composer.getPaddingLeft(), composer.getPaddingTop(), composer.getPaddingRight(), bottomPadding);
             }
@@ -4655,6 +4655,10 @@ public class MainActivity extends Activity {
 
     static int keyboardScrollBottomPadding(boolean keyboardVisible, int composerLift, int gap) {
         return keyboardVisible ? Math.max(0, composerLift) + Math.max(0, gap) : 0;
+    }
+
+    static int composerBottomPaddingDp(boolean keyboardVisible) {
+        return keyboardVisible ? COMPOSER_KEYBOARD_BOTTOM_PADDING_DP : COMPOSER_BOTTOM_PADDING_DP;
     }
 
     static int keyboardContentBottomPadding(boolean keyboardVisible, int originalPadding, int compactPadding) {
