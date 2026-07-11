@@ -121,9 +121,8 @@ public class MainActivity extends Activity {
     private static final int COMPOSER_BOTTOM_PADDING_DP = 12;
     private static final int COMPOSER_KEYBOARD_BOTTOM_PADDING_DP = 0;
     private static final int HEADER_BAR_HEIGHT_DP = 56;
-    private static final int INBOX_ACTION_HEIGHT_DP = 48;
-    private static final int INBOX_ACTION_BOTTOM_MARGIN_DP = 14;
-    private static final int INBOX_ACTION_SCROLL_CLEARANCE_DP = 72;
+    private static final int INBOX_ACTION_HEIGHT_DP = 52;
+    private static final int INBOX_ACTION_BOTTOM_MARGIN_DP = 72;
     private static final int KEYBOARD_CONTENT_BOTTOM_PADDING_DP = 6;
     private static final int KEYBOARD_SCROLL_GAP_DP = 4;
     private static final int SCREEN_CACHE_LIMIT = 12;
@@ -206,6 +205,10 @@ public class MainActivity extends Activity {
     private boolean activeThreadHasOlderMessages;
     private boolean activityResumed;
     private boolean firstResume = true;
+    private boolean pendingMessageRefresh;
+    private String pendingIncomingAddress = "";
+    private String pendingIncomingBody = "";
+    private long pendingIncomingDateMillis;
     private long normalInboxLoadedAtMillis;
     private long blockedInboxLoadedAtMillis;
     private final ExecutorService inboxLoader = newSingleThreadLoader("crow-inbox-loader");
@@ -234,19 +237,21 @@ public class MainActivity extends Activity {
             String address = intent == null ? "" : intent.getStringExtra(EXTRA_OPEN_ADDRESS);
             String body = intent == null ? "" : intent.getStringExtra(EXTRA_MESSAGE_BODY);
             long dateMillis = intent == null ? 0L : intent.getLongExtra(EXTRA_MESSAGE_DATE, 0L);
+            if (!activityResumed) {
+                rememberPendingIncoming(address, body, dateMillis);
+                return;
+            }
             if (screenMode == ScreenMode.CHAT
                     && activeConversation != null
                     && (TextUtils.isEmpty(address) || sameAddress(activeConversation.address, address))) {
-                if (activityResumed) {
-                    boolean wasNearBottom = isScrollNearBottom(activeScrollView, dp(120));
-                    showIncomingSmsImmediately(address, body, dateMillis, wasNearBottom);
-                    if (!wasNearBottom) {
-                        showNewMessageButton();
-                    }
-                    markConversationReadAsync(activeConversation);
-                    refreshActiveThreadAsync(wasNearBottom);
+                boolean wasNearBottom = isScrollNearBottom(activeScrollView, dp(120));
+                showIncomingSmsImmediately(address, body, dateMillis, wasNearBottom);
+                if (!wasNearBottom) {
+                    showNewMessageButton();
                 }
-            } else if (screenMode == ScreenMode.INBOX && activityResumed) {
+                markConversationReadAsync(activeConversation);
+                refreshActiveThreadAsync(wasNearBottom);
+            } else if (screenMode == ScreenMode.INBOX) {
                 showIncomingConversationImmediately(address, body, dateMillis);
                 refreshInboxList(true);
             }
@@ -525,13 +530,9 @@ public class MainActivity extends Activity {
         inboxList = new LinearLayout(this);
         inboxList.setOrientation(LinearLayout.VERTICAL);
         inboxList.setBackgroundColor(BLACK);
-        inboxList.setPadding(dp(10), dp(10), dp(10), dp(18));
+        inboxList.setPadding(dp(10), dp(12), dp(10), showingBlocked ? dp(20) : dp(132));
         scrollView.addView(inboxList);
-        FrameLayout.LayoutParams scrollParams = new FrameLayout.LayoutParams(-1, -1);
-        if (!showingBlocked) {
-            scrollParams.bottomMargin = dp(INBOX_ACTION_SCROLL_CLEARANCE_DP);
-        }
-        content.addView(scrollView, scrollParams);
+        content.addView(scrollView, new FrameLayout.LayoutParams(-1, -1));
         cachedInboxRoot = root;
         cachedInboxList = inboxList;
         cachedInboxBlocked = showingBlocked;
@@ -544,18 +545,18 @@ public class MainActivity extends Activity {
             compose.setTextColor(BLACK);
             compose.setTextSize(15);
             compose.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            compose.setBackground(primaryGradientBackground(24));
+            compose.setBackground(primaryGradientBackground(26));
             applyPressFeedback(compose);
             compose.setOnClickListener(v -> {
                 performTapFeedback(v);
                 showComposePage(true);
             });
             FrameLayout.LayoutParams composeParams = new FrameLayout.LayoutParams(
-                    dp(126),
+                    dp(130),
                     dp(INBOX_ACTION_HEIGHT_DP),
                     Gravity.END | Gravity.BOTTOM
             );
-            composeParams.setMargins(0, 0, dp(16), dp(INBOX_ACTION_BOTTOM_MARGIN_DP));
+            composeParams.setMargins(0, 0, dp(18), dp(INBOX_ACTION_BOTTOM_MARGIN_DP));
             content.addView(compose, composeParams);
         }
 
@@ -1316,6 +1317,42 @@ public class MainActivity extends Activity {
         updated = new ArrayList<>(initialThreadRows(updated, activeThreadMessageLimit));
         threadRowsCache.put(cacheKey, updated);
         renderActiveThreadRowsStaged(updated, scrollToBottom);
+    }
+
+    private void rememberPendingIncoming(String address, String body, long dateMillis) {
+        pendingMessageRefresh = true;
+        if (!TextUtils.isEmpty(body)) {
+            pendingIncomingAddress = address == null ? "" : address;
+            pendingIncomingBody = body;
+            pendingIncomingDateMillis = dateMillis;
+        }
+    }
+
+    private void applyPendingIncoming() {
+        if (!pendingMessageRefresh) {
+            return;
+        }
+        String address = pendingIncomingAddress;
+        String body = pendingIncomingBody;
+        long dateMillis = pendingIncomingDateMillis;
+        pendingMessageRefresh = false;
+        pendingIncomingAddress = "";
+        pendingIncomingBody = "";
+        pendingIncomingDateMillis = 0L;
+        if (TextUtils.isEmpty(body)) {
+            return;
+        }
+        if (screenMode == ScreenMode.CHAT
+                && activeConversation != null
+                && sameAddress(activeConversation.address, address)) {
+            boolean wasNearBottom = isScrollNearBottom(activeScrollView, dp(120));
+            showIncomingSmsImmediately(address, body, dateMillis, wasNearBottom);
+            if (!wasNearBottom) {
+                showNewMessageButton();
+            }
+        } else if (screenMode == ScreenMode.INBOX) {
+            showIncomingConversationImmediately(address, body, dateMillis);
+        }
     }
 
     private void rememberSentConversationImmediately(
@@ -4744,13 +4781,15 @@ public class MainActivity extends Activity {
         super.onResume();
         activityResumed = true;
         ContactLookup.clearCache();
-        if (firstResume) {
-            firstResume = false;
+        boolean skipRefresh = shouldSkipInitialRefresh(firstResume, pendingMessageRefresh);
+        firstResume = false;
+        if (skipRefresh) {
             return;
         }
         if (root == null) {
             return;
         }
+        applyPendingIncoming();
         if (screenMode == ScreenMode.INBOX) {
             refreshInboxList(true);
         } else if (screenMode == ScreenMode.CHAT) {
@@ -4760,6 +4799,10 @@ public class MainActivity extends Activity {
             scrollThreadToBottomOnResume = false;
             refreshActiveThreadAsync(shouldOpenAtBottom);
         }
+    }
+
+    static boolean shouldSkipInitialRefresh(boolean firstResume, boolean pendingMessageRefresh) {
+        return firstResume && !pendingMessageRefresh;
     }
 
     private void afterKeyboardSettles(View anchor, Runnable action) {

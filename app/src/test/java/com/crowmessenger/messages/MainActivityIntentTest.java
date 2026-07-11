@@ -243,6 +243,13 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void initialResume_doesNotSkipPendingIncomingMessageRefresh() {
+        assertTrue(MainActivity.shouldSkipInitialRefresh(true, false));
+        assertFalse(MainActivity.shouldSkipInitialRefresh(true, true));
+        assertFalse(MainActivity.shouldSkipInitialRefresh(false, false));
+    }
+
+    @Test
     public void scaledImageHeight_preservesAspectRatioWithinMessageBounds() {
         assertEquals(300, MainActivity.scaledImageHeight(300, 160, 360, 1000, 1000));
         assertEquals(160, MainActivity.scaledImageHeight(300, 160, 360, 2000, 500));
