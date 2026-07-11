@@ -85,8 +85,8 @@ public class SmsDeliverReceiver extends BroadcastReceiver {
         if (!saved) {
             LocalMmsStore.saveNotice(context, incoming.address, body, receivedAt);
         }
-        MessageNotifier.showIncoming(context, incoming.address, body);
         MessageUpdateBroadcaster.broadcastIncomingSms(context, incoming.address, body, receivedAt);
+        MessageNotifier.showIncoming(context, incoming.address, body, receivedAt);
         return saved;
     }
 

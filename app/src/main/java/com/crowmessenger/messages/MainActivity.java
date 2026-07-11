@@ -324,7 +324,12 @@ public class MainActivity extends Activity {
     private void openFromIntent(Intent intent) {
         String address = intent == null ? "" : intent.getStringExtra(EXTRA_OPEN_ADDRESS);
         if (!TextUtils.isEmpty(address)) {
-            showChat(SmsStore.conversationForAddress(this, address), false);
+            showChat(cachedConversationForAddress(address), false);
+            String body = intent.getStringExtra(EXTRA_MESSAGE_BODY);
+            long dateMillis = intent.getLongExtra(EXTRA_MESSAGE_DATE, 0L);
+            if (!TextUtils.isEmpty(body)) {
+                showIncomingSmsImmediately(address, body, dateMillis, true);
+            }
             return;
         }
         ComposeIntent composeIntent = composeIntent(intent);
@@ -1302,7 +1307,7 @@ public class MainActivity extends Activity {
         String cacheKey = threadCacheKey(activeConversation.address, activeThreadBlockedOnly);
         List<ChatMessage> cached = threadRowsCache.get(cacheKey);
         if (cached == null) {
-            return;
+            cached = new ArrayList<>();
         }
         long safeDate = dateMillis > 0L ? dateMillis : System.currentTimeMillis();
         for (ChatMessage message : cached) {
@@ -1326,6 +1331,19 @@ public class MainActivity extends Activity {
             pendingIncomingBody = body;
             pendingIncomingDateMillis = dateMillis;
         }
+    }
+
+    private Conversation cachedConversationForAddress(String address) {
+        List<Conversation> cached = inboxRowsCache.get(inboxCacheKey(false, ""));
+        if (cached == null) {
+            cached = InboxSnapshotStore.load(this);
+        }
+        for (Conversation conversation : cached) {
+            if (conversation != null && sameAddress(conversation.address, address)) {
+                return conversation;
+            }
+        }
+        return SmsStore.quickConversationForAddress(this, address);
     }
 
     private void applyPendingIncoming() {

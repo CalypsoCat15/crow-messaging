@@ -29,10 +29,18 @@ final class MessageNotifier {
     }
 
     static void showIncoming(Context context, String address, String body) {
-        showIncoming(context, address, "", body);
+        showIncoming(context, address, "", body, 0L);
+    }
+
+    static void showIncoming(Context context, String address, String body, long dateMillis) {
+        showIncoming(context, address, "", body, dateMillis);
     }
 
     static void showIncoming(Context context, String address, String senderAddress, String body) {
+        showIncoming(context, address, senderAddress, body, 0L);
+    }
+
+    private static void showIncoming(Context context, String address, String senderAddress, String body, long dateMillis) {
         if (shouldSuppressIncoming(context, address, senderAddress, body)) {
             return;
         }
@@ -48,9 +56,7 @@ final class MessageNotifier {
         ensureChannel(context, manager, address, channelId);
         String notificationBody = notificationBody(context, address, senderAddress, body);
 
-        Intent intent = new Intent(context, MainActivity.class);
-        intent.putExtra(MainActivity.EXTRA_OPEN_ADDRESS, address);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Intent intent = incomingContentIntent(context, address, body, dateMillis);
         PendingIntent pendingIntent = PendingIntent.getActivity(
                 context,
                 AddressUtil.stableId(address),
@@ -72,6 +78,17 @@ final class MessageNotifier {
         int notificationId = AddressUtil.stableId(address, senderAddress + "|" + body);
         rememberIncomingNotification(context, address, notificationId);
         manager.notify(notificationId, builder.build());
+    }
+
+    static Intent incomingContentIntent(Context context, String address, String body, long dateMillis) {
+        Intent intent = new Intent(context, MainActivity.class);
+        intent.putExtra(MainActivity.EXTRA_OPEN_ADDRESS, address);
+        if (!TextUtils.isEmpty(body) && dateMillis > 0L) {
+            intent.putExtra(MainActivity.EXTRA_MESSAGE_BODY, body);
+            intent.putExtra(MainActivity.EXTRA_MESSAGE_DATE, dateMillis);
+        }
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        return intent;
     }
 
     private static Notification.Action markReadAction(Context context, String address) {

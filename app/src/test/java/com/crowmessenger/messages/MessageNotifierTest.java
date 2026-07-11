@@ -5,6 +5,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 
 import java.util.HashSet;
@@ -42,6 +43,34 @@ public class MessageNotifierTest {
                 "15551234567",
                 "hello"
         ));
+    }
+
+    @Test
+    public void incomingContentIntent_carriesSmsForImmediateThreadDisplay() {
+        Intent intent = MessageNotifier.incomingContentIntent(
+                context,
+                "15551234567",
+                "hello now",
+                1234L
+        );
+
+        assertEquals(MainActivity.class.getName(), intent.getComponent().getClassName());
+        assertEquals("15551234567", intent.getStringExtra(MainActivity.EXTRA_OPEN_ADDRESS));
+        assertEquals("hello now", intent.getStringExtra(MainActivity.EXTRA_MESSAGE_BODY));
+        assertEquals(1234L, intent.getLongExtra(MainActivity.EXTRA_MESSAGE_DATE, 0L));
+    }
+
+    @Test
+    public void incomingContentIntent_doesNotOptimisticallyRenderUndatedMmsNotice() {
+        Intent intent = MessageNotifier.incomingContentIntent(
+                context,
+                "15551234567",
+                LocalMmsStore.PICTURE_MESSAGE,
+                0L
+        );
+
+        assertFalse(intent.hasExtra(MainActivity.EXTRA_MESSAGE_BODY));
+        assertFalse(intent.hasExtra(MainActivity.EXTRA_MESSAGE_DATE));
     }
 
     @Test

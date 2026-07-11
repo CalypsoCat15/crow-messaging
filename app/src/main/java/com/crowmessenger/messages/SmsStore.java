@@ -388,6 +388,23 @@ final class SmsStore {
     }
 
     static Conversation conversationForAddress(Context context, String address) {
+        Conversation display = quickConversationForAddress(context, address);
+        if (LocalMmsStore.isGroupAddress(display.address)) {
+            return display;
+        }
+        String threadId = findThreadIdForAddress(context, display.address);
+        return new Conversation(
+                TextUtils.isEmpty(threadId) ? "" : threadId,
+                display.address,
+                display.name,
+                display.photoUri,
+                display.snippet,
+                display.dateMillis,
+                display.unreadCount
+        );
+    }
+
+    static Conversation quickConversationForAddress(Context context, String address) {
         String clean = cleanAddress(address);
         if (LocalMmsStore.isGroupAddress(clean)) {
             return new Conversation(
@@ -400,13 +417,13 @@ final class SmsStore {
                     0
             );
         }
-        String threadId = findThreadIdForAddress(context, clean);
         String displayName = displayNameForAddress(context, clean);
+        String cachedPhotoUri = CONTACT_PHOTO_CACHE.get(clean);
         return new Conversation(
-                TextUtils.isEmpty(threadId) ? "" : threadId,
+                "",
                 clean,
                 displayName,
-                photoUriForAddress(context, clean),
+                cachedPhotoUri == null ? "" : cachedPhotoUri,
                 "",
                 System.currentTimeMillis(),
                 0
