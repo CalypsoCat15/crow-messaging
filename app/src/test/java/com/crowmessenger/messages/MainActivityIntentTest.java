@@ -243,6 +243,14 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void keyboardComposerLift_usesActualSystemInsetWithoutGap() {
+        assertEquals(600, MainActivity.keyboardComposerLift(648, 48));
+        assertEquals(648, MainActivity.keyboardComposerLift(648, 0));
+        assertEquals(0, MainActivity.keyboardComposerLift(40, 48));
+        assertEquals(648, MainActivity.keyboardComposerLift(648, -10));
+    }
+
+    @Test
     public void initialResume_doesNotSkipPendingIncomingMessageRefresh() {
         assertTrue(MainActivity.shouldSkipInitialRefresh(true, false));
         assertFalse(MainActivity.shouldSkipInitialRefresh(true, true));

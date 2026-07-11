@@ -4669,7 +4669,9 @@ public class MainActivity extends Activity {
             if (composer.getPaddingBottom() != bottomPadding) {
                 composer.setPadding(composer.getPaddingLeft(), composer.getPaddingTop(), composer.getPaddingRight(), bottomPadding);
             }
-            int composerLift = keyboardVisible ? Math.max(0, coveredHeight - dp(18)) : 0;
+            int composerLift = keyboardVisible
+                    ? keyboardComposerLift(coveredHeight, rootView.getPaddingBottom())
+                    : 0;
             composer.setTranslationY(-composerLift);
             if (scrollContent != null) {
                 int contentBottomPadding = keyboardContentBottomPadding(
@@ -4710,6 +4712,10 @@ public class MainActivity extends Activity {
 
     static int keyboardScrollBottomPadding(boolean keyboardVisible, int composerLift, int gap) {
         return keyboardVisible ? Math.max(0, composerLift) + Math.max(0, gap) : 0;
+    }
+
+    static int keyboardComposerLift(int coveredHeight, int systemBottomInset) {
+        return Math.max(0, coveredHeight - Math.max(0, systemBottomInset));
     }
 
     static int composerBottomPaddingDp(boolean keyboardVisible) {
