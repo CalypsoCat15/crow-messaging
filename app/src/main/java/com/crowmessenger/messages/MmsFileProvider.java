@@ -21,11 +21,11 @@ public class MmsFileProvider extends ContentProvider {
 
     @Override
     public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
-        if (mode == null) {
-            throw new FileNotFoundException("MMS file mode is missing");
-        }
-        if (!mode.contains("w")) {
+        if ("r".equals(mode)) {
             return ParcelFileDescriptor.open(outgoingFileForUri(uri), ParcelFileDescriptor.MODE_READ_ONLY);
+        }
+        if (!isSupportedWriteMode(mode)) {
+            throw new FileNotFoundException("Unsupported MMS file mode");
         }
         File file = fileForUri(uri);
         File parent = file.getParentFile();
@@ -66,10 +66,7 @@ public class MmsFileProvider extends ContentProvider {
         if (getContext() == null) {
             throw new FileNotFoundException("No context");
         }
-        String name = uri.getLastPathSegment();
-        if (TextUtils.isEmpty(name) || !name.endsWith(".pdu") || name.contains("..") || name.contains("/") || name.contains("\\")) {
-            throw new FileNotFoundException("Invalid MMS file name");
-        }
+        String name = validatedFileName(uri, "Invalid MMS file name");
         String id = name.substring(0, name.length() - ".pdu".length());
         File downloadDir = MmsFiles.appFileDirPath(getContext(), MmsFiles.DOWNLOADS_DIR);
         File file = new File(downloadDir, name);
@@ -92,10 +89,7 @@ public class MmsFileProvider extends ContentProvider {
         if (getContext() == null) {
             throw new FileNotFoundException("No context");
         }
-        String name = uri.getLastPathSegment();
-        if (TextUtils.isEmpty(name) || !name.endsWith(".pdu") || name.contains("..") || name.contains("/") || name.contains("\\")) {
-            throw new FileNotFoundException("Invalid outgoing MMS file name");
-        }
+        String name = validatedFileName(uri, "Invalid outgoing MMS file name");
         File outputDir = MmsFiles.appFileDirPath(getContext(), MmsFiles.OUTGOING_DIR);
         File file = new File(outputDir, name);
         try {
@@ -106,6 +100,32 @@ public class MmsFileProvider extends ContentProvider {
             throw new FileNotFoundException("Invalid outgoing MMS file path");
         }
         return file;
+    }
+
+    private static boolean isSupportedWriteMode(String mode) {
+        return "w".equals(mode)
+                || "wt".equals(mode)
+                || "wa".equals(mode)
+                || "rw".equals(mode)
+                || "rwt".equals(mode);
+    }
+
+    private static String validatedFileName(Uri uri, String error) throws FileNotFoundException {
+        if (uri == null
+                || !"content".equals(uri.getScheme())
+                || !AUTHORITY.equals(uri.getAuthority())
+                || uri.getPathSegments().size() != 1
+                || uri.getQuery() != null
+                || uri.getFragment() != null) {
+            throw new FileNotFoundException(error);
+        }
+        String name = uri.getLastPathSegment();
+        if (TextUtils.isEmpty(name)
+                || name.length() > 104
+                || !name.matches("[A-Za-z0-9_-]+\\.pdu")) {
+            throw new FileNotFoundException(error);
+        }
+        return name;
     }
 
 }

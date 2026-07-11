@@ -75,4 +75,35 @@ public class MmsFileProviderTest {
         assertThrows(FileNotFoundException.class, () -> provider.openFile(uri, "r"));
     }
 
+    @Test
+    public void openFile_rejectsWrongAuthorityAndNestedPaths() {
+        Uri wrongAuthority = Uri.parse("content://other.example/pending-test.pdu");
+        Uri nestedPath = Uri.parse("content://" + MmsFileProvider.AUTHORITY + "/folder/pending-test.pdu");
+
+        assertThrows(FileNotFoundException.class, () -> provider.openFile(wrongAuthority, "w"));
+        assertThrows(FileNotFoundException.class, () -> provider.openFile(nestedPath, "w"));
+    }
+
+    @Test
+    public void openFile_rejectsQueryFragmentAndUnsupportedMode() {
+        Uri query = Uri.parse("content://" + MmsFileProvider.AUTHORITY + "/pending-test.pdu?file=other");
+        Uri fragment = Uri.parse("content://" + MmsFileProvider.AUTHORITY + "/pending-test.pdu#other");
+        Uri normal = Uri.parse("content://" + MmsFileProvider.AUTHORITY + "/pending-test.pdu");
+
+        assertThrows(FileNotFoundException.class, () -> provider.openFile(query, "w"));
+        assertThrows(FileNotFoundException.class, () -> provider.openFile(fragment, "w"));
+        assertThrows(FileNotFoundException.class, () -> provider.openFile(normal, "invalid"));
+    }
+
+    @Test
+    public void openFile_rejectsUnsafeOrOversizedNames() {
+        Uri encodedTraversal = Uri.parse("content://" + MmsFileProvider.AUTHORITY + "/..%2Fsecret.pdu");
+        Uri unicodeName = Uri.parse("content://" + MmsFileProvider.AUTHORITY + "/messag%C3%A9.pdu");
+        Uri oversized = Uri.parse("content://" + MmsFileProvider.AUTHORITY + "/" + "a".repeat(101) + ".pdu");
+
+        assertThrows(FileNotFoundException.class, () -> provider.openFile(encodedTraversal, "w"));
+        assertThrows(FileNotFoundException.class, () -> provider.openFile(unicodeName, "w"));
+        assertThrows(FileNotFoundException.class, () -> provider.openFile(oversized, "w"));
+    }
+
 }
