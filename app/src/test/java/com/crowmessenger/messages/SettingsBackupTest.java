@@ -55,6 +55,29 @@ public class SettingsBackupTest {
     }
 
     @Test
+    public void restoreRejectsMalformedBackupWithoutChangingAnySettings() throws Exception {
+        TextSizePrefs.setLabel(context, TextSizePrefs.LARGE);
+        ComposerPrefs.setVoiceButtonVisible(context, false);
+        SpamFilter.addCustomKeywords(context, "keep me");
+        String malformed = "{"
+                + "\"format\":\"crow-settings\","
+                + "\"version\":1,"
+                + "\"textSize\":\"Small\","
+                + "\"microphoneButton\":true,"
+                + "\"spamKeywords\":\"not-a-list\""
+                + "}";
+
+        org.junit.Assert.assertThrows(
+                org.json.JSONException.class,
+                () -> SettingsBackup.restore(context, malformed)
+        );
+
+        assertEquals(TextSizePrefs.LARGE, TextSizePrefs.currentLabel(context));
+        assertFalse(ComposerPrefs.voiceButtonVisible(context));
+        assertEquals(java.util.List.of("keep me"), SpamFilter.customKeywords(context));
+    }
+
+    @Test
     public void backupReaderAcceptsSmallUtf8SettingsFile() throws Exception {
         java.io.ByteArrayInputStream input = new java.io.ByteArrayInputStream(
                 "{\"format\":\"crow-settings\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8)
