@@ -88,6 +88,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
+import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
@@ -116,9 +117,12 @@ public class MainActivity extends Activity {
     private static final String STATE_COMPOSE_RECIPIENT_ADDRESSES = "state_compose_recipient_addresses";
     private static final String STATE_COMPOSE_RECIPIENT_NAMES = "state_compose_recipient_names";
     private static final int RECENT_THREAD_LIMIT = 140;
-    private static final int COMPOSER_BOTTOM_PADDING_DP = 82;
-    private static final int COMPOSER_KEYBOARD_BOTTOM_PADDING_DP = 24;
-    private static final int HEADER_BAR_HEIGHT_DP = 58;
+    private static final int COMPOSER_BOTTOM_PADDING_DP = 12;
+    private static final int COMPOSER_KEYBOARD_BOTTOM_PADDING_DP = 12;
+    private static final int HEADER_BAR_HEIGHT_DP = 56;
+    private static final int INBOX_ACTION_HEIGHT_DP = 48;
+    private static final int INBOX_ACTION_BOTTOM_MARGIN_DP = 14;
+    private static final int INBOX_ACTION_SCROLL_CLEARANCE_DP = 72;
     private static final int KEYBOARD_CONTENT_BOTTOM_PADDING_DP = 6;
     private static final int KEYBOARD_SCROLL_GAP_DP = 4;
     private static final int SCREEN_CACHE_LIMIT = 12;
@@ -142,7 +146,7 @@ public class MainActivity extends Activity {
     private static final int BLACK = Color.BLACK;
     private static final int SURFACE = Color.rgb(24, 24, 24);
     private static final int CHAT_HEADER = Color.rgb(37, 39, 41);
-    private static final int DIVIDER = Color.rgb(54, 104, 96);
+    private static final int DIVIDER = Color.rgb(62, 64, 66);
     private static final int TEXT = Color.rgb(245, 245, 245);
     private static final int MUTED = Color.rgb(165, 165, 170);
     private static final int MAX_ATTACHED_IMAGES = 10;
@@ -444,32 +448,28 @@ public class MainActivity extends Activity {
             root = cachedInboxRoot;
             inboxList = cachedInboxList;
             setContentView(root);
-            applyStatusBarInset(root);
+            applySystemBarInsets(root);
             refreshInboxList();
             return;
         }
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BLACK);
-        setContentView(root);
-        applyStatusBarInset(root);
+        root = installScreenRoot();
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
         header.setBackground(headerBackground());
-        header.setPadding(dp(20), dp(4), dp(20), dp(12));
+        header.setPadding(dp(16), dp(2), dp(16), dp(10));
         root.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout titleRow = new LinearLayout(this);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(titleRow, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView title = text(showingBlocked ? "Spam & blocked" : "Crow Messenger", 30, TEXT, Typeface.BOLD);
+        TextView title = text(showingBlocked ? "Spam & blocked" : "Crow Messenger", 27, TEXT, Typeface.BOLD);
         titleRow.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
 
         FrameLayout inboxMenu = threeDotMenuButton("More options");
         setFeedbackClickListener(inboxMenu, v -> showInboxMenu());
-        titleRow.addView(inboxMenu, new LinearLayout.LayoutParams(dp(58), dp(40)));
+        titleRow.addView(inboxMenu, new LinearLayout.LayoutParams(dp(56), dp(40)));
 
         boolean defaultSmsApp = isDefaultSmsApp();
         if (!defaultSmsApp) {
@@ -485,8 +485,8 @@ public class MainActivity extends Activity {
         search.setSingleLine(true);
         search.setTextSize(15);
         search.setBackgroundResource(R.drawable.composer_background);
-        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(44));
-        searchParams.topMargin = dp(10);
+        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(42));
+        searchParams.topMargin = dp(8);
         search.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -512,9 +512,13 @@ public class MainActivity extends Activity {
         inboxList = new LinearLayout(this);
         inboxList.setOrientation(LinearLayout.VERTICAL);
         inboxList.setBackgroundColor(BLACK);
-        inboxList.setPadding(dp(10), dp(12), dp(10), showingBlocked ? dp(20) : dp(132));
+        inboxList.setPadding(dp(10), dp(10), dp(10), dp(18));
         scrollView.addView(inboxList);
-        content.addView(scrollView, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams scrollParams = new FrameLayout.LayoutParams(-1, -1);
+        if (!showingBlocked) {
+            scrollParams.bottomMargin = dp(INBOX_ACTION_SCROLL_CLEARANCE_DP);
+        }
+        content.addView(scrollView, scrollParams);
         cachedInboxRoot = root;
         cachedInboxList = inboxList;
         cachedInboxBlocked = showingBlocked;
@@ -527,14 +531,18 @@ public class MainActivity extends Activity {
             compose.setTextColor(BLACK);
             compose.setTextSize(15);
             compose.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            compose.setBackground(primaryGradientBackground(26));
+            compose.setBackground(primaryGradientBackground(24));
             applyPressFeedback(compose);
             compose.setOnClickListener(v -> {
                 performTapFeedback(v);
                 showComposePage(true);
             });
-            FrameLayout.LayoutParams composeParams = new FrameLayout.LayoutParams(dp(130), dp(52), Gravity.END | Gravity.BOTTOM);
-            composeParams.setMargins(0, 0, dp(18), dp(72));
+            FrameLayout.LayoutParams composeParams = new FrameLayout.LayoutParams(
+                    dp(126),
+                    dp(INBOX_ACTION_HEIGHT_DP),
+                    Gravity.END | Gravity.BOTTOM
+            );
+            composeParams.setMargins(0, 0, dp(16), dp(INBOX_ACTION_BOTTOM_MARGIN_DP));
             content.addView(compose, composeParams);
         }
 
@@ -543,8 +551,7 @@ public class MainActivity extends Activity {
 
     private void showComposePage(boolean reset) {
         screenMode = ScreenMode.COMPOSE;
-        getWindow().setStatusBarColor(BLACK);
-        getWindow().setNavigationBarColor(BLACK);
+        styleSystemBars();
         activeConversation = null;
         activeMessagesList = null;
         activeScrollView = null;
@@ -557,11 +564,7 @@ public class MainActivity extends Activity {
             pendingCameraImageUri = null;
         }
 
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BLACK);
-        setContentView(root);
-        applyStatusBarInset(root);
+        root = installScreenRoot();
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
@@ -1005,17 +1008,12 @@ public class MainActivity extends Activity {
 
     private void showSpamRulesPage() {
         screenMode = ScreenMode.SPAM_RULES;
-        getWindow().setStatusBarColor(BLACK);
-        getWindow().setNavigationBarColor(BLACK);
+        styleSystemBars();
         activeConversation = null;
         activeMessagesList = null;
         activeScrollView = null;
 
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BLACK);
-        setContentView(root);
-        applyStatusBarInset(root);
+        root = installScreenRoot();
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
@@ -1407,9 +1405,9 @@ public class MainActivity extends Activity {
             if (index + 1 < conversations.size()) {
                 View divider = new View(this);
                 divider.setBackgroundColor(DIVIDER);
-                divider.setAlpha(0.32f);
+                divider.setAlpha(0.7f);
                 LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(-1, dp(1));
-                dividerParams.setMargins(dp(72), 0, dp(12), 0);
+                dividerParams.setMargins(dp(70), 0, dp(10), 0);
                 inboxList.addView(divider, dividerParams);
             }
         }
@@ -1529,10 +1527,10 @@ public class MainActivity extends Activity {
     private View conversationRow(Conversation conversation) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(10), dp(10), dp(10), dp(10));
-        row.setMinimumHeight(dp(76));
+        row.setPadding(dp(8), dp(9), dp(8), dp(9));
+        row.setMinimumHeight(dp(74));
         if (conversation.unreadCount > 0) {
-            row.setBackground(roundedBackground(Color.rgb(13, 28, 23), 14));
+            row.setBackground(roundedBackground(Color.rgb(13, 28, 23), 12));
         }
         applyPressFeedback(row);
         row.setOnClickListener(v -> {
@@ -1540,7 +1538,7 @@ public class MainActivity extends Activity {
             showChat(conversation, showingBlocked);
         });
 
-        row.addView(contactAvatar(conversation, 48, 19));
+        row.addView(contactAvatar(conversation, 46, 18));
 
         LinearLayout middle = new LinearLayout(this);
         middle.setOrientation(LinearLayout.VERTICAL);
@@ -1575,7 +1573,7 @@ public class MainActivity extends Activity {
         LinearLayout trailing = new LinearLayout(this);
         trailing.setOrientation(LinearLayout.VERTICAL);
         trailing.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-        trailing.setMinimumWidth(dp(72));
+        trailing.setMinimumWidth(dp(68));
         row.addView(trailing);
 
         TextView time = text(
@@ -1692,8 +1690,7 @@ public class MainActivity extends Activity {
         cancelTask(inboxLoadTask);
         clearCurrentFocusBeforeNavigation();
         screenMode = ScreenMode.CHAT;
-        getWindow().setStatusBarColor(BLACK);
-        getWindow().setNavigationBarColor(BLACK);
+        styleSystemBars();
         threadSearchQuery = "";
         activeConversation = conversation;
         activeThreadBlockedOnly = blockedOnly;
@@ -1709,15 +1706,11 @@ public class MainActivity extends Activity {
             activeScrollView = cachedChatScrollView;
             activeJumpToBottomButton = cachedChatJumpToBottomButton;
             setContentView(root);
-            applyStatusBarInset(root);
+            applySystemBarInsets(root);
             refreshActiveThreadAsync(true);
             return;
         }
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BLACK);
-        setContentView(root);
-        applyStatusBarInset(root);
+        root = installScreenRoot();
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
@@ -1736,11 +1729,11 @@ public class MainActivity extends Activity {
         back.setContentDescription("Back to messages");
         back.setScaleType(ImageView.ScaleType.CENTER);
         setFeedbackClickListener(back, v -> showInbox());
-        bar.addView(back, new LinearLayout.LayoutParams(dp(52), dp(48)));
+        bar.addView(back, new LinearLayout.LayoutParams(dp(50), dp(48)));
 
-        FrameLayout avatar = contactAvatar(conversation, 40, 16);
+        FrameLayout avatar = contactAvatar(conversation, 38, 15);
         setFeedbackClickListener(avatar, v -> showContactQuickActions(conversation));
-        LinearLayout.LayoutParams avatarParams = new LinearLayout.LayoutParams(dp(40), dp(40));
+        LinearLayout.LayoutParams avatarParams = new LinearLayout.LayoutParams(dp(38), dp(38));
         avatarParams.rightMargin = dp(10);
         bar.addView(avatar, avatarParams);
 
@@ -1748,7 +1741,7 @@ public class MainActivity extends Activity {
         LinearLayout titleBlock = new LinearLayout(this);
         titleBlock.setOrientation(LinearLayout.VERTICAL);
         titleBlock.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text(conversation.name, groupConversation ? 18 : 20, TEXT, Typeface.BOLD);
+        TextView title = text(conversation.name, groupConversation ? 17 : 18, TEXT, Typeface.BOLD);
         title.setOnClickListener(v -> showContactQuickActions(conversation));
         title.setGravity(Gravity.CENTER_VERTICAL);
         title.setSingleLine(true);
@@ -1764,7 +1757,7 @@ public class MainActivity extends Activity {
 
         FrameLayout menu = threeDotMenuButton("Conversation options");
         setFeedbackClickListener(menu, v -> showConversationMenu(conversation));
-        LinearLayout.LayoutParams menuParams = new LinearLayout.LayoutParams(dp(58), dp(40));
+        LinearLayout.LayoutParams menuParams = new LinearLayout.LayoutParams(dp(56), dp(40));
         bar.addView(menu, menuParams);
 
         FrameLayout threadArea = new FrameLayout(this);
@@ -2317,13 +2310,8 @@ public class MainActivity extends Activity {
         Conversation returnConversation = activeConversation;
         activeMessagesList = null;
         activeScrollView = null;
-        getWindow().setStatusBarColor(BLACK);
-        getWindow().setNavigationBarColor(BLACK);
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BLACK);
-        setContentView(root);
-        applyStatusBarInset(root);
+        styleSystemBars();
+        root = installScreenRoot();
 
         LinearLayout bar = new LinearLayout(this);
         bar.setGravity(Gravity.CENTER_VERTICAL);
@@ -3114,13 +3102,8 @@ public class MainActivity extends Activity {
         screenMode = ScreenMode.CONVERSATION_INFO;
         activeMessagesList = null;
         activeScrollView = null;
-        getWindow().setStatusBarColor(BLACK);
-        getWindow().setNavigationBarColor(BLACK);
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BLACK);
-        setContentView(root);
-        applyStatusBarInset(root);
+        styleSystemBars();
+        root = installScreenRoot();
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
@@ -3501,13 +3484,8 @@ public class MainActivity extends Activity {
         screenMode = ScreenMode.CONVERSATION_INFO;
         activeMessagesList = null;
         activeScrollView = null;
-        getWindow().setStatusBarColor(BLACK);
-        getWindow().setNavigationBarColor(BLACK);
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BLACK);
-        setContentView(root);
-        applyStatusBarInset(root);
+        styleSystemBars();
+        root = installScreenRoot();
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
@@ -4488,7 +4466,7 @@ public class MainActivity extends Activity {
     private GradientDrawable headerBackground() {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(CHAT_HEADER);
-        drawable.setCornerRadius(dp(22));
+        drawable.setCornerRadius(dp(24));
         return drawable;
     }
 
@@ -4671,13 +4649,25 @@ public class MainActivity extends Activity {
         window.setNavigationBarColor(BLACK);
     }
 
-    private void applyStatusBarInset(LinearLayout rootView) {
-        int left = rootView.getPaddingLeft();
-        int right = rootView.getPaddingRight();
-        int bottom = rootView.getPaddingBottom();
+    private LinearLayout installScreenRoot() {
+        LinearLayout screenRoot = new LinearLayout(this);
+        screenRoot.setOrientation(LinearLayout.VERTICAL);
+        screenRoot.setBackgroundColor(BLACK);
+        setContentView(screenRoot);
+        applySystemBarInsets(screenRoot);
+        return screenRoot;
+    }
+
+    private void applySystemBarInsets(LinearLayout rootView) {
+        rootView.setPadding(0, 0, 0, 0);
         ViewCompat.setOnApplyWindowInsetsListener(rootView, (view, insets) -> {
-            int statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
-            view.setPadding(left, statusBarTop, right, bottom);
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            view.setPadding(
+                    systemBars.left,
+                    systemBars.top,
+                    systemBars.right,
+                    systemBars.bottom
+            );
             return insets;
         });
         ViewCompat.requestApplyInsets(rootView);
