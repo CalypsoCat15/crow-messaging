@@ -219,6 +219,7 @@ public class MainActivity extends Activity {
     private String pendingDraftBody = "";
     private final LruCache<String, List<Conversation>> inboxRowsCache = new LruCache<>(SCREEN_CACHE_LIMIT);
     private final LruCache<String, List<ChatMessage>> threadRowsCache = new LruCache<>(SCREEN_CACHE_LIMIT);
+    private final LruCache<String, Integer> imageHeightCache = new LruCache<>(64);
     private final BroadcastReceiver messageUpdateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -585,38 +586,38 @@ public class MainActivity extends Activity {
         setFeedbackClickListener(back, v -> showInbox());
         bar.addView(back, new LinearLayout.LayoutParams(dp(52), dp(48)));
 
-        TextView title = text("New message", 22, TEXT, Typeface.BOLD);
+        TextView title = text("New message", 20, TEXT, Typeface.BOLD);
         title.setGravity(Gravity.CENTER_VERTICAL);
         bar.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(18), dp(20), dp(18), dp(28));
+        content.setPadding(dp(18), dp(16), dp(18), dp(24));
         scroll.addView(content);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        TextView toLabel = text("To", 14, MUTED, Typeface.BOLD);
+        TextView toLabel = text("Recipients", 13, MUTED, Typeface.BOLD);
         content.addView(toLabel, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout recipients = new LinearLayout(this);
         recipients.setOrientation(LinearLayout.VERTICAL);
-        recipients.setPadding(0, dp(6), 0, dp(8));
+        recipients.setPadding(0, dp(6), 0, dp(4));
         content.addView(recipients, new LinearLayout.LayoutParams(-1, -2));
         renderComposeRecipients(recipients);
 
         LinearLayout manualRecipientRow = new LinearLayout(this);
         manualRecipientRow.setGravity(Gravity.CENTER_VERTICAL);
-        manualRecipientRow.setPadding(0, dp(2), 0, dp(8));
+        manualRecipientRow.setPadding(0, dp(2), 0, dp(4));
         EditText numberInput = new EditText(this);
-        numberInput.setHint("Type phone number");
+        numberInput.setHint("Phone number");
         numberInput.setSingleLine(true);
         numberInput.setInputType(InputType.TYPE_CLASS_PHONE);
         numberInput.setTextSize(15);
         numberInput.setTextColor(Color.rgb(25, 25, 25));
         numberInput.setHintTextColor(Color.rgb(130, 130, 130));
         numberInput.setBackgroundResource(R.drawable.composer_background);
-        manualRecipientRow.addView(numberInput, new LinearLayout.LayoutParams(0, dp(48), 1));
+        manualRecipientRow.addView(numberInput, new LinearLayout.LayoutParams(0, dp(44), 1));
 
         Button addNumber = new Button(this);
         addNumber.setText(R.string.add_button);
@@ -630,7 +631,7 @@ public class MainActivity extends Activity {
                 renderComposeRecipients(recipients);
             }
         });
-        LinearLayout.LayoutParams addNumberParams = new LinearLayout.LayoutParams(dp(72), dp(48));
+        LinearLayout.LayoutParams addNumberParams = new LinearLayout.LayoutParams(dp(68), dp(44));
         addNumberParams.leftMargin = dp(8);
         manualRecipientRow.addView(addNumber, addNumberParams);
         content.addView(manualRecipientRow, new LinearLayout.LayoutParams(-1, -2));
@@ -640,6 +641,9 @@ public class MainActivity extends Activity {
             pickContact();
         });
         addPerson.setBackground(primaryGradientBackground(22));
+        LinearLayout.LayoutParams addPersonParams = new LinearLayout.LayoutParams(-1, dp(44));
+        addPersonParams.setMargins(0, dp(4), 0, dp(4));
+        addPerson.setLayoutParams(addPersonParams);
         content.addView(addPerson);
 
         EditText body = new EditText(this);
@@ -699,29 +703,42 @@ public class MainActivity extends Activity {
     private void renderComposeRecipients(LinearLayout recipients) {
         recipients.removeAllViews();
         if (composeRecipients.isEmpty()) {
-            TextView empty = text("Add one or more people to start.", 14, MUTED, Typeface.NORMAL);
-            empty.setPadding(0, dp(4), 0, dp(8));
-            recipients.addView(empty, new LinearLayout.LayoutParams(-1, -2));
             return;
         }
         for (ComposeRecipient recipient : composeRecipients) {
             LinearLayout row = new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(14), dp(10), dp(14), dp(10));
-            row.setBackground(roundedBackground(SURFACE, 24));
+            row.setPadding(dp(12), dp(8), dp(8), dp(8));
+            row.setBackground(roundedBackground(SURFACE, 18));
 
+            LinearLayout identity = new LinearLayout(this);
+            identity.setOrientation(LinearLayout.VERTICAL);
             TextView name = text(recipient.name, 16, TEXT, Typeface.BOLD);
-            row.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+            name.setSingleLine(true);
+            name.setEllipsize(TextUtils.TruncateAt.END);
+            identity.addView(name, new LinearLayout.LayoutParams(-1, -2));
+            if (!TextUtils.equals(recipient.name, recipient.address)) {
+                TextView address = text(recipient.address, 13, MUTED, Typeface.NORMAL);
+                address.setSingleLine(true);
+                address.setEllipsize(TextUtils.TruncateAt.END);
+                address.setPadding(0, dp(2), 0, 0);
+                identity.addView(address, new LinearLayout.LayoutParams(-1, -2));
+            }
+            row.addView(identity, new LinearLayout.LayoutParams(0, -2, 1));
 
-            TextView remove = text("Remove", 13, MINT, Typeface.BOLD);
-            remove.setOnClickListener(v -> {
+            ImageButton remove = new ImageButton(this);
+            remove.setImageResource(R.drawable.ic_close_mint);
+            remove.setBackgroundColor(Color.TRANSPARENT);
+            remove.setPadding(dp(9), dp(9), dp(9), dp(9));
+            remove.setContentDescription("Remove " + recipient.name);
+            setFeedbackClickListener(remove, v -> {
                 composeRecipients.remove(recipient);
                 renderComposeRecipients(recipients);
             });
-            row.addView(remove, new LinearLayout.LayoutParams(-2, -2));
+            row.addView(remove, new LinearLayout.LayoutParams(dp(40), dp(40)));
 
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2);
-            rowParams.setMargins(0, 0, 0, dp(8));
+            rowParams.setMargins(0, 0, 0, dp(6));
             recipients.addView(row, rowParams);
         }
     }
@@ -2791,21 +2808,37 @@ public class MainActivity extends Activity {
 
     private int imageHeightForUri(String imageUri) {
         int targetWidth = dp(285);
+        if (TextUtils.isEmpty(imageUri)) {
+            return targetWidth;
+        }
+        Integer cachedHeight = imageHeightCache.get(imageUri);
+        if (cachedHeight != null) {
+            return cachedHeight;
+        }
+        int height = targetWidth;
         try {
             Uri uri = messageImageUri(imageUri);
             if (uri == null) {
-                return targetWidth;
+                return height;
             }
             BitmapFactory.Options options = new BitmapFactory.Options();
             options.inJustDecodeBounds = true;
             BitmapFactory.decodeFile(uri.getPath(), options);
-            if (options.outWidth > 0 && options.outHeight > 0) {
-                int scaledHeight = Math.round(targetWidth * (options.outHeight / (float) options.outWidth));
-                return Math.max(dp(160), Math.min(dp(360), scaledHeight));
-            }
+            height = scaledImageHeight(targetWidth, dp(160), dp(360), options.outWidth, options.outHeight);
         } catch (Exception ignored) {
         }
-        return targetWidth;
+        imageHeightCache.put(imageUri, height);
+        return height;
+    }
+
+    static int scaledImageHeight(int targetWidth, int minimumHeight, int maximumHeight, int sourceWidth, int sourceHeight) {
+        if (targetWidth <= 0 || sourceWidth <= 0 || sourceHeight <= 0) {
+            return Math.max(0, targetWidth);
+        }
+        int lowerBound = Math.max(0, minimumHeight);
+        int upperBound = Math.max(lowerBound, maximumHeight);
+        int scaledHeight = Math.round(targetWidth * (sourceHeight / (float) sourceWidth));
+        return Math.max(lowerBound, Math.min(upperBound, scaledHeight));
     }
 
     private SpannableString highlightSearchMatch(String body, String query) {

@@ -237,6 +237,14 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void scaledImageHeight_preservesAspectRatioWithinMessageBounds() {
+        assertEquals(300, MainActivity.scaledImageHeight(300, 160, 360, 1000, 1000));
+        assertEquals(160, MainActivity.scaledImageHeight(300, 160, 360, 2000, 500));
+        assertEquals(360, MainActivity.scaledImageHeight(300, 160, 360, 500, 2000));
+        assertEquals(300, MainActivity.scaledImageHeight(300, 160, 360, 0, 0));
+    }
+
+    @Test
     public void keyboardContentBottomPadding_compactsOnlyWhileKeyboardIsVisible() {
         assertEquals(6, MainActivity.keyboardContentBottomPadding(true, 20, 6));
         assertEquals(20, MainActivity.keyboardContentBottomPadding(false, 20, 6));
