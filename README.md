@@ -1,0 +1,118 @@
+<p align="center">
+  <img src="artwork/crow_launcher_master.png" alt="Crow Messenger logo: a black crow holding a mint and cyan envelope" width="260">
+</p>
+
+<h1 align="center">Crow Messenger</h1>
+
+<p align="center">
+  <strong>A bold, personal Android SMS and MMS app built for everyday use.</strong><br>
+  Fast conversations, dependable picture messaging, thoughtful privacy controls, and a custom mint-and-cyan identity.
+</p>
+
+## About the App
+
+Crow Messenger is a native Android messaging app created as a modern, personal alternative to Samsung Messages. What began as a custom texting experience for a Galaxy S24+ has grown into a capable daily-use app with one-to-one and group messaging, picture sharing, notifications, contact-aware spam filtering, and a carefully polished interface.
+
+The app is designed around real-world use: conversations should open quickly, new messages should appear promptly, pictures and captions should arrive together, and useful controls should remain easy to find.
+
+## Highlights
+
+### Messaging
+
+- Send and receive standard SMS messages
+- Send and receive MMS pictures with or without captions
+- Send and receive group texts and group pictures
+- Keep equivalent group conversations together instead of creating duplicate threads
+- Open incoming-message notifications directly in the correct conversation
+- Retry failed outgoing texts and recover interrupted MMS downloads
+- See clear Sending, Sent, and Failed status beneath outgoing messages
+- Reply or mark a conversation read directly from its notification
+- Save unfinished drafts and show them in the inbox
+- Schedule text messages for later delivery
+
+### Pictures
+
+- Choose an existing picture from the Gallery
+- Take a new picture with the Camera and bring it back into the conversation
+- Share a picture directly from Samsung Gallery into Crow Messenger
+- Select or share up to 10 pictures with a compact attachment preview strip
+- Preserve picture orientation when sending Gallery photos
+- View pictures full screen, then share or save them
+
+### Daily-Use Experience
+
+- Responsive inbox and conversation loading with cached previews
+- Immediate inbox refresh after sending or receiving messages
+- Search conversations and search within a conversation
+- Pin important conversations
+- Mark individual conversations or all messages as read
+- Contact photos, group avatars, timestamps, unread badges, and sender labels
+- Quick jump to the newest message when reviewing older history
+- Keyboard-aware conversation layout that keeps recent messages visible
+
+### Notifications and Privacy
+
+- Incoming message notifications with per-contact sound choices
+- Mute individual conversations
+- Separate Spam & Blocked inbox
+- Custom spam keywords that apply only to unknown senders, protecting normal conversations with saved contacts
+- Block, unblock, and manually mark conversations as spam
+- Privacy-safe troubleshooting reports that avoid exposing message contents and phone numbers
+- Export and restore a privacy-safe settings backup without including conversations or phone numbers
+
+### Original Design
+
+- Custom Crow Messenger name, launcher icon, watermark, and empty-state artwork
+- Black interface with signature mint (`#33FFA5`) and cyan (`#00FFEA`) accents
+- Rounded, friendly headers and message bubbles
+- Custom crow send button and gradient action controls
+- Samsung Messages-inspired ergonomics with its own distinct visual identity
+
+## Quality
+
+Crow Messenger is backed by **237 automated tests** covering message parsing, conversation grouping, spam behavior, Android sharing intents, MMS handling, scheduled messages, notifications, settings backup, and other core behavior. Android lint checks are also part of the verification process.
+
+The project uses save points throughout development so working SMS and MMS behavior can be protected while new features are added.
+
+## Current Scope
+
+Crow Messenger supports SMS and carrier MMS. RCS features such as typing indicators, read receipts, and internet-based high-resolution chats are outside the current scope.
+
+Carrier MMS behavior can vary by device, mobile network, and carrier configuration, so picture and group messaging are tested on the target Galaxy S24+ before a build is treated as ready for daily use.
+
+## Privacy
+
+- Crow Messenger has no advertising SDK, analytics service, account system, or cloud messaging backend.
+- Crow stores SMS/MMS records, contacts-derived display data, drafts, blocked senders, and notification preferences only on the Android device; carrier delivery still uses Android's normal SMS/MMS services.
+- The optional troubleshooting report omits names, phone numbers, captions, and message text.
+- Settings backups intentionally exclude conversations, pictures, phone numbers, drafts, and scheduled-message contents.
+- Repository tests use reserved fictional `555` phone numbers and `example.com` addresses rather than real contact data.
+
+## Built With
+
+- Native Android and Java
+- Android SMS, MMS, contacts, notifications, Camera, and Gallery integrations
+- Gradle build tooling
+- Robolectric and JUnit automated tests
+
+## Development
+
+Build a debug version with the Gradle wrapper:
+
+```powershell
+./gradlew assembleDebug
+```
+
+Run the automated test suite:
+
+```powershell
+./gradlew testDebugUnitTest
+```
+
+Crow Messenger must be selected as Android's default SMS app to access and manage the device's SMS/MMS conversations.
+
+---
+
+<p align="center">
+  Designed, tested, and refined through real daily messaging on a Samsung Galaxy S24+.
+</p>

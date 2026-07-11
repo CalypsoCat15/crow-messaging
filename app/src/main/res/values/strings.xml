@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Crow Messenger</string>
+    <string name="compose_button">+ Compose</string>
+    <string name="add_spam_rules_button">Add rules</string>
+    <string name="remove_selected_button">Remove selected</string>
+    <string name="send_button">Send</string>
+    <string name="add_button">Add</string>
+    <string name="cancel_button">Cancel</string>
+    <string name="schedule_date_label">Date: %1$s</string>
+    <string name="schedule_time_label">Time: %1$s</string>
+</resources>

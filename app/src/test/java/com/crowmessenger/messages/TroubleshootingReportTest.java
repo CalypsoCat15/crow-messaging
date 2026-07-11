@@ -1,0 +1,42 @@
+package com.crowmessenger.messages;
+
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+import android.content.Context;
+
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
+import org.robolectric.annotation.Config;
+
+@RunWith(RobolectricTestRunner.class)
+@Config(sdk = 35)
+public class TroubleshootingReportTest {
+    @Test
+    public void privateMmsEvents_removesPhoneSuffixLinksAndFileIds() {
+        String events = "sender=***4567 url=https://example.com/private file=secret-id.pdu";
+
+        String privateEvents = TroubleshootingReport.privateMmsEvents(events);
+
+        assertFalse(privateEvents.contains("4567"));
+        assertFalse(privateEvents.contains("example.com"));
+        assertFalse(privateEvents.contains("secret-id"));
+        assertTrue(privateEvents.contains("***"));
+    }
+
+    @Test
+    public void create_includesPrivacyStatementAndNoStoredMessageBody() {
+        Context context = RuntimeEnvironment.getApplication();
+        context.getSharedPreferences("local_mms", Context.MODE_PRIVATE).edit().clear().commit();
+        LocalMmsStore.saveNotice(context, "15551234567", "PRIVATE MESSAGE BODY", 1000L);
+
+        String report = TroubleshootingReport.create(context);
+
+        assertTrue(report.contains("Privacy:"));
+        assertTrue(report.contains("Local MMS records: total=1"));
+        assertFalse(report.contains("15551234567"));
+        assertFalse(report.contains("PRIVATE MESSAGE BODY"));
+    }
+}
