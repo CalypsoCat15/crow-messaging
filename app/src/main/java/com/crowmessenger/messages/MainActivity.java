@@ -1672,9 +1672,11 @@ public class MainActivity extends Activity {
             row.setBackground(roundedBackground(Color.rgb(13, 28, 23), 12));
         }
         applyPressFeedback(row);
+        String draft = DraftStore.draft(this, conversation.address);
+        String resultThreadSearch = threadSearchForInboxResult(conversation, searchQuery, draft);
         row.setOnClickListener(v -> {
             performTapFeedback(v);
-            showChat(conversation, showingBlocked);
+            showChat(conversation, showingBlocked, resultThreadSearch);
         });
 
         row.addView(contactAvatar(conversation, 46, 18));
@@ -1698,19 +1700,23 @@ public class MainActivity extends Activity {
             middle.addView(pinned);
         }
 
-        String draft = DraftStore.draft(this, conversation.address);
         boolean hasDraft = !TextUtils.isEmpty(draft);
-        String snippetText = hasDraft
+        boolean searchingInbox = !TextUtils.isEmpty(searchQuery);
+        boolean draftIsSearchMatch = searchingInbox
+                && hasDraft
+                && TextUtils.equals(draft, conversation.snippet);
+        boolean showDraft = hasDraft && (!searchingInbox || draftIsSearchMatch);
+        String snippetText = showDraft
                 ? "Draft: " + draft
-                : searchExcerpt(conversation.snippet, searchQuery, 110);
-        int snippetColor = hasDraft ? MINT : (conversation.unreadCount > 0 ? TEXT : MUTED);
+                : searchExcerpt(conversation.snippet, searchQuery, 64);
+        int snippetColor = showDraft ? MINT : (conversation.unreadCount > 0 ? TEXT : MUTED);
         TextView snippet = text(
                 snippetText,
                 TextSizePrefs.inboxPreviewSp(this),
                 snippetColor,
                 Typeface.NORMAL
         );
-        if (!hasDraft && !TextUtils.isEmpty(searchQuery)) {
+        if (!showDraft && searchingInbox) {
             snippet.setText(highlightSearchMatch(snippetText, searchQuery.trim()));
         }
         snippet.setSingleLine(true);
@@ -1832,6 +1838,10 @@ public class MainActivity extends Activity {
     }
 
     private void showChat(Conversation conversation, boolean blockedOnly) {
+        showChat(conversation, blockedOnly, "");
+    }
+
+    private void showChat(Conversation conversation, boolean blockedOnly, String initialSearchQuery) {
         ScreenMode previousScreen = screenMode;
         String previousAddress = activeConversation == null ? "" : activeConversation.address;
         inboxLoadGeneration++;
@@ -1839,7 +1849,7 @@ public class MainActivity extends Activity {
         clearCurrentFocusBeforeNavigation();
         screenMode = ScreenMode.CHAT;
         styleSystemBars();
-        threadSearchQuery = "";
+        threadSearchQuery = TextUtils.isEmpty(initialSearchQuery) ? "" : initialSearchQuery.trim();
         activeConversation = conversation;
         activeThreadBlockedOnly = blockedOnly;
         if (conversation == null || !sameAddress(previousAddress, conversation.address)) {
@@ -3133,6 +3143,26 @@ public class MainActivity extends Activity {
         return (start > 0 ? "..." : "") + excerpt + (end < text.length() ? "..." : "");
     }
 
+    static String threadSearchForInboxResult(Conversation conversation, String query, String draft) {
+        if (conversation == null || TextUtils.isEmpty(query)) {
+            return "";
+        }
+        String needle = query.trim();
+        if (TextUtils.isEmpty(needle)
+                || TextUtils.equals(conversation.snippet, conversation.address)
+                || (!TextUtils.isEmpty(draft) && TextUtils.equals(draft, conversation.snippet))
+                || !containsSearchText(conversation.snippet, needle)) {
+            return "";
+        }
+        return needle;
+    }
+
+    private static boolean containsSearchText(String text, String query) {
+        return !TextUtils.isEmpty(text)
+                && !TextUtils.isEmpty(query)
+                && text.toLowerCase(Locale.getDefault()).contains(query.toLowerCase(Locale.getDefault()));
+    }
+
     private View searchStatusRow(String query, int count) {
         TextView status = text("Search: " + query + "  |  " + count + " result" + (count == 1 ? "" : "s") + "  |  Clear", 13, MINT, Typeface.NORMAL);
         status.setGravity(Gravity.CENTER);
@@ -3150,8 +3180,7 @@ public class MainActivity extends Activity {
 
     private boolean matchesThreadSearch(ChatMessage message, String query) {
         String body = message == null ? "" : message.body;
-        return !TextUtils.isEmpty(body)
-                && body.toLowerCase(Locale.getDefault()).contains(query.toLowerCase(Locale.getDefault()));
+        return containsSearchText(body, query);
     }
 
     private void showBlockDialog(Conversation conversation) {

@@ -317,6 +317,24 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void inboxTextMatchCarriesSearchIntoOpenedThread() {
+        Conversation result = new Conversation("1", "15551234567", "Daddy", "K good. Busy busy.", 1000L, 0);
+
+        assertEquals("busy", MainActivity.threadSearchForInboxResult(result, " busy ", ""));
+    }
+
+    @Test
+    public void inboxNameNumberAndDraftMatchesOpenThreadNormally() {
+        Conversation nameMatch = new Conversation("1", "15551234567", "Busy Bee", "Unrelated", 1000L, 0);
+        Conversation numberMatch = new Conversation("2", "15557654321", "Dad", "15557654321", 1000L, 0);
+        Conversation draftMatch = new Conversation("3", "15559876543", "Mom", "Busy tomorrow", 1000L, 0);
+
+        assertEquals("", MainActivity.threadSearchForInboxResult(nameMatch, "busy", ""));
+        assertEquals("", MainActivity.threadSearchForInboxResult(numberMatch, "6543", ""));
+        assertEquals("", MainActivity.threadSearchForInboxResult(draftMatch, "busy", "Busy tomorrow"));
+    }
+
+    @Test
     public void keyboardContentBottomPadding_compactsOnlyWhileKeyboardIsVisible() {
         assertEquals(6, MainActivity.keyboardContentBottomPadding(true, 20, 6));
         assertEquals(20, MainActivity.keyboardContentBottomPadding(false, 20, 6));
