@@ -252,7 +252,7 @@ final class SpamFilter {
                 .edit()
                 .putStringSet(KEY_SENDERS, senders)
                 .putStringSet(KEY_THREADS, threads)
-                .commit();
+                .apply();
     }
 
     private static void saveKeywords(Context context, Set<String> keywords) {
