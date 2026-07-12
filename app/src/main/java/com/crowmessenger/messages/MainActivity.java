@@ -242,7 +242,9 @@ public class MainActivity extends Activity {
             String address = intent == null ? "" : intent.getStringExtra(EXTRA_OPEN_ADDRESS);
             String body = intent == null ? "" : intent.getStringExtra(EXTRA_MESSAGE_BODY);
             long dateMillis = intent == null ? 0L : intent.getLongExtra(EXTRA_MESSAGE_DATE, 0L);
-            removeMatchingAddress(locallyReadAddresses, address);
+            if (MessageUpdateBroadcaster.isIncomingUpdate(intent)) {
+                removeMatchingAddress(locallyReadAddresses, address);
+            }
             if (!activityResumed) {
                 rememberPendingIncoming(address, body, dateMillis);
                 return;

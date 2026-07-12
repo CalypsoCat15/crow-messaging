@@ -48,6 +48,7 @@ public class MmsDeliverReceiver extends BroadcastReceiver {
             LocalMmsStore.saveNotice(context, "MMS", MMS_NOTICE_RECEIVED, System.currentTimeMillis());
             MessageNotifier.showIncoming(context, "MMS", MMS_NOTICE_RECEIVED);
             refreshAddress = "MMS";
+            MessageUpdateBroadcaster.broadcastIncoming(context, refreshAddress);
         }
 
         MessageUpdateBroadcaster.broadcast(context, refreshAddress);
@@ -92,6 +93,7 @@ public class MmsDeliverReceiver extends BroadcastReceiver {
     private void saveDownloadFailure(Context context, String address) {
         LocalMmsStore.saveNotice(context, address, LocalMmsStore.DOWNLOAD_FAILED_MESSAGE, System.currentTimeMillis());
         MessageNotifier.showIncoming(context, address, LocalMmsStore.DOWNLOAD_FAILED_MESSAGE);
+        MessageUpdateBroadcaster.broadcastIncoming(context, address);
     }
 
     private void archiveNoticePdu(Context context, String id, byte[] data) {

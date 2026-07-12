@@ -91,7 +91,7 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
             }
         }
 
-        MessageUpdateBroadcaster.broadcast(context, conversationAddress);
+        MessageUpdateBroadcaster.broadcastIncoming(context, conversationAddress);
     }
 
     private static boolean retryPendingDownload(Context context, String id, LocalMmsStore.Pending pending, int result, String resultDescription) {
@@ -157,7 +157,7 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
         MmsDebugStore.record(context, debugMessage);
         LocalMmsStore.saveNotice(context, address, LocalMmsStore.DOWNLOAD_FAILED_MESSAGE, System.currentTimeMillis());
         MessageNotifier.showIncoming(context, address, LocalMmsStore.DOWNLOAD_FAILED_MESSAGE);
-        MessageUpdateBroadcaster.broadcast(context, address);
+        MessageUpdateBroadcaster.broadcastIncoming(context, address);
     }
 
     static synchronized void recoverPendingDownloads(Context context) {
@@ -195,7 +195,7 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
                 String address = saveDownloadedPdu(context, id, pending);
                 LocalMmsStore.clearPending(context, id);
                 deletePendingDownload(context, pending.pduPath);
-                MessageUpdateBroadcaster.broadcast(context, address);
+                MessageUpdateBroadcaster.broadcastIncoming(context, address);
             } catch (Exception ignored) {
                 MmsDebugStore.record(context, "Pending MMS recovery failed: " + ignored.getClass().getSimpleName());
                 archiveUnreadablePdu(context, id, pending.pduPath);
@@ -203,7 +203,7 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
                 MessageNotifier.showIncoming(context, pending.address, LocalMmsStore.DISPLAY_FAILED_MESSAGE);
                 LocalMmsStore.clearPending(context, id);
                 deletePendingDownload(context, pending.pduPath);
-                MessageUpdateBroadcaster.broadcast(context, pending.address);
+                MessageUpdateBroadcaster.broadcastIncoming(context, pending.address);
             }
         }
     }
