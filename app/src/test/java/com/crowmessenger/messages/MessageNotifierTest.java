@@ -195,4 +195,28 @@ public class MessageNotifierTest {
         assertFalse(prefs.contains("address_" + stableId));
         assertEquals(0, prefs.getAll().size());
     }
+
+    @Test
+    public void notificationKeys_doNotCollideForDifferentSenderIdsWithSameJavaHash() {
+        assertEquals(AddressUtil.stableId("Aa"), AddressUtil.stableId("BB"));
+
+        assertFalse(MessageNotifier.notificationIdsKey("Aa")
+                .equals(MessageNotifier.notificationIdsKey("BB")));
+    }
+
+    @Test
+    public void clearIncomingForAddress_doesNotClearCollidingLegacySender() {
+        String storedAddress = "Aa";
+        int collidingId = AddressUtil.stableId(storedAddress);
+        SharedPreferences prefs = context.getSharedPreferences("message_notifications", Context.MODE_PRIVATE);
+        prefs.edit()
+                .putStringSet("ids_" + collidingId, new HashSet<>(List.of("101")))
+                .putString("address_" + collidingId, storedAddress)
+                .commit();
+
+        MessageNotifier.clearIncomingForAddress(context, "BB");
+
+        assertTrue(prefs.contains("ids_" + collidingId));
+        assertEquals(storedAddress, prefs.getString("address_" + collidingId, ""));
+    }
 }

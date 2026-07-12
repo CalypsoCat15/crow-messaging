@@ -225,7 +225,9 @@ final class MessageNotifier {
                 continue;
             }
             String storedAddress = prefs.getString(notificationAddressKey(key), "");
-            if (!key.equals(directKey) && !AddressUtil.sameConversationAddress(address, storedAddress)) {
+            boolean storedAddressMatches = AddressUtil.sameConversationAddress(address, storedAddress);
+            if ((!TextUtils.isEmpty(storedAddress) && !storedAddressMatches)
+                    || (TextUtils.isEmpty(storedAddress) && !key.equals(directKey))) {
                 continue;
             }
             Set<String> ids = new HashSet<>(prefs.getStringSet(key, new HashSet<>()));
@@ -343,8 +345,8 @@ final class MessageNotifier {
         }
     }
 
-    private static String notificationIdsKey(String address) {
-        return IDS_PREFIX + AddressUtil.stableId(address);
+    static String notificationIdsKey(String address) {
+        return IDS_PREFIX + Uri.encode(AddressUtil.stableKey(address));
     }
 
     private static String notificationAddressKey(String idsKey) {
