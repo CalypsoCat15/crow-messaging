@@ -9,4 +9,5 @@
     <string name="schedule_date_label">Date: %1$s</string>
     <string name="schedule_time_label">Time: %1$s</string>
     <string name="copy_verification_code">Copy code  %1$s</string>
+    <string name="searching_messages">Searching&#8230;</string>
 </resources>

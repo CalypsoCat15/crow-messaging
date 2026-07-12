@@ -750,10 +750,12 @@ final class LocalMmsStore {
             return true;
         }
         String needle = query.toLowerCase(Locale.getDefault());
+        if (address.toLowerCase(Locale.getDefault()).contains(needle)
+                || (!TextUtils.isEmpty(body) && body.toLowerCase(Locale.getDefault()).contains(needle))) {
+            return true;
+        }
         String name = conversationName(context, address);
-        return address.toLowerCase(Locale.getDefault()).contains(needle)
-                || (!TextUtils.isEmpty(name) && name.toLowerCase(Locale.getDefault()).contains(needle))
-                || (!TextUtils.isEmpty(body) && body.toLowerCase(Locale.getDefault()).contains(needle));
+        return !TextUtils.isEmpty(name) && name.toLowerCase(Locale.getDefault()).contains(needle);
     }
 
     private static boolean looksLikeAttachmentMetadata(String body) {

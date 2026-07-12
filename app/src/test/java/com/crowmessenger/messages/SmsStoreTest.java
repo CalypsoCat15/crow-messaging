@@ -14,11 +14,36 @@ import android.content.Context;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
 public class SmsStoreTest {
+    @Test
+    public void searchMatchesOlderMessageTextAndMatchingContactWithoutPerMessageLookup() {
+        assertTrue(SmsStore.matchesQuery("15551234567", "This is another Test message", "test", new HashSet<>()));
+
+        HashSet<String> matchingContacts = new HashSet<>();
+        matchingContacts.add("+1 (555) 765-4321");
+        assertTrue(SmsStore.matchesQuery("15557654321", "Hello", "dave", matchingContacts));
+        assertFalse(SmsStore.matchesQuery("15550000000", "Hello", "test", matchingContacts));
+    }
+
+    @Test
+    public void searchSelection_filtersInProviderBeforeReadingMessageHistory() {
+        HashSet<String> matchingContacts = new HashSet<>();
+        matchingContacts.add("15557654321");
+
+        SmsStore.SearchSelection selection = SmsStore.searchSelection("test", matchingContacts);
+
+        assertTrue(selection.selection.contains("body LIKE ?"));
+        assertTrue(selection.selection.contains("address=?"));
+        assertEquals("%test%", selection.args[0]);
+        assertEquals("%test%", selection.args[1]);
+        assertEquals("15557654321", selection.args[2]);
+    }
+
     @Test
     public void deleteMessage_removesOnlySelectedLocalMmsRecord() {
         Context context = RuntimeEnvironment.getApplication();

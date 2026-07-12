@@ -1208,6 +1208,14 @@ public class MainActivity extends Activity {
         boolean blocked = showingBlocked;
         String query = searchQuery;
         String cacheKey = inboxCacheKey(blocked, query);
+        if (!TextUtils.isEmpty(query) && !TextUtils.equals(renderedInboxCacheKey, cacheKey)) {
+            List<Conversation> cachedSearch = inboxRowsCache.get(cacheKey);
+            if (cachedSearch == null) {
+                renderInboxSearchLoading(cacheKey);
+            } else {
+                renderInboxRows(cachedSearch, blocked, cacheKey);
+            }
+        }
         if (inboxList.getChildCount() == 0) {
             List<Conversation> cachedRows = inboxRowsCache.get(cacheKey);
             if (cachedRows == null && !blocked && TextUtils.isEmpty(query)) {
@@ -1262,6 +1270,18 @@ public class MainActivity extends Activity {
                 prefetchVisibleThreads(snapshot, blocked);
             });
         });
+    }
+
+    private void renderInboxSearchLoading(String cacheKey) {
+        if (inboxList == null) {
+            return;
+        }
+        renderedInboxCacheKey = cacheKey;
+        inboxList.removeAllViews();
+        TextView loading = text(getString(R.string.searching_messages), 15, MUTED, Typeface.NORMAL);
+        loading.setGravity(Gravity.CENTER);
+        loading.setPadding(0, dp(42), 0, dp(20));
+        inboxList.addView(loading, new LinearLayout.LayoutParams(-1, -2));
     }
 
     private void showIncomingConversationImmediately(String address, String body, long dateMillis) {

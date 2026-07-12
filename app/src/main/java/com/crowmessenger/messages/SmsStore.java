@@ -45,6 +45,7 @@ final class SmsStore {
         ContentResolver resolver = context.getContentResolver();
         Blocklist.Matcher blockMatcher = Blocklist.matcher(context);
         SpamFilter.Matcher spamMatcher = SpamFilter.matcher(context);
+        Set<String> matchingContactAddresses = contactAddressesMatchingQuery(context, query);
         boolean smsUnavailable = false;
         String[] columns = new String[] {
                 Telephony.Sms.THREAD_ID,
@@ -54,8 +55,15 @@ final class SmsStore {
                 Telephony.Sms.READ,
                 Telephony.Sms.TYPE
         };
+        SearchSelection searchSelection = searchSelection(query, matchingContactAddresses);
 
-        try (Cursor cursor = resolver.query(SMS_URI, columns, null, null, Telephony.Sms.DEFAULT_SORT_ORDER)) {
+        try (Cursor cursor = resolver.query(
+                SMS_URI,
+                columns,
+                searchSelection.selection,
+                searchSelection.args,
+                Telephony.Sms.DEFAULT_SORT_ORDER
+        )) {
             if (cursor == null) {
                 smsUnavailable = true;
             } else {
@@ -80,7 +88,7 @@ final class SmsStore {
                     if (!shouldShowMessage(blockedOnly, blockedSender, keywordSpam)) {
                         continue;
                     }
-                    if (!matchesQuery(context, address, body, query)) {
+                    if (!matchesQuery(address, body, query, matchingContactAddresses)) {
                         continue;
                     }
                     long date = cursor.getLong(3);
@@ -124,7 +132,7 @@ final class SmsStore {
             }
         }
         for (DraftStore.Draft draft : DraftStore.drafts(context)) {
-            mergeDraftConversation(context, conversations, draft, blockedOnly, query);
+            mergeDraftConversation(context, conversations, draft, blockedOnly, query, matchingContactAddresses);
         }
         TrashStore.removeHiddenOrRestoreNew(context, conversations);
         conversations.sort((left, right) -> {
@@ -327,12 +335,13 @@ final class SmsStore {
             List<Conversation> conversations,
             DraftStore.Draft draft,
             boolean blockedOnly,
-            String query
+            String query,
+            Set<String> matchingContactAddresses
     ) {
         if (draft == null || TextUtils.isEmpty(draft.address) || blockedOnly
                 || Blocklist.isBlocked(context, draft.address)
                 || SpamFilter.isMarkedSpam(context, draft.address)
-                || !matchesQuery(context, draft.address, draft.body, query)) {
+                || !matchesQuery(draft.address, draft.body, query, matchingContactAddresses)) {
             return;
         }
         int existingIndex = conversationIndex(conversations, draft.address);
@@ -791,15 +800,83 @@ final class SmsStore {
         return "";
     }
 
-    private static boolean matchesQuery(Context context, String address, String body, String query) {
+    static boolean matchesQuery(String address, String body, String query, Set<String> matchingContactAddresses) {
         if (TextUtils.isEmpty(query)) {
             return true;
         }
         String needle = query.toLowerCase(Locale.getDefault());
-        String name = displayNameForAddress(context, address);
-        return address.toLowerCase(Locale.getDefault()).contains(needle)
-                || (!TextUtils.isEmpty(name) && name.toLowerCase(Locale.getDefault()).contains(needle))
-                || (!TextUtils.isEmpty(body) && body.toLowerCase(Locale.getDefault()).contains(needle));
+        if ((!TextUtils.isEmpty(address) && address.toLowerCase(Locale.getDefault()).contains(needle))
+                || (!TextUtils.isEmpty(body) && body.toLowerCase(Locale.getDefault()).contains(needle))) {
+            return true;
+        }
+        if (matchingContactAddresses != null) {
+            for (String contactAddress : matchingContactAddresses) {
+                if (AddressUtil.sameConversationAddress(address, contactAddress)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    static SearchSelection searchSelection(String query, Set<String> matchingContactAddresses) {
+        if (TextUtils.isEmpty(query)) {
+            return new SearchSelection(null, null);
+        }
+        ArrayList<String> args = new ArrayList<>();
+        args.add("%" + query.trim() + "%");
+        args.add("%" + query.trim() + "%");
+        StringBuilder selection = new StringBuilder("(")
+                .append(Telephony.Sms.BODY).append(" LIKE ? OR ")
+                .append(Telephony.Sms.ADDRESS).append(" LIKE ?");
+        if (matchingContactAddresses != null) {
+            int count = 0;
+            for (String address : matchingContactAddresses) {
+                if (TextUtils.isEmpty(address) || count >= 100) {
+                    continue;
+                }
+                selection.append(" OR ").append(Telephony.Sms.ADDRESS).append("=?");
+                args.add(address);
+                count++;
+            }
+        }
+        selection.append(")");
+        return new SearchSelection(selection.toString(), args.toArray(new String[0]));
+    }
+
+    private static Set<String> contactAddressesMatchingQuery(Context context, String query) {
+        Set<String> addresses = new HashSet<>();
+        if (TextUtils.isEmpty(query)) {
+            return addresses;
+        }
+        try (Cursor cursor = context.getContentResolver().query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                new String[] { ContactsContract.CommonDataKinds.Phone.NUMBER },
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY + " LIKE ?",
+                new String[] { "%" + query.trim() + "%" },
+                null
+        )) {
+            if (cursor != null) {
+                while (cursor.moveToNext()) {
+                    String address = cleanAddress(cursor.getString(0));
+                    if (!TextUtils.isEmpty(address)) {
+                        addresses.add(address);
+                    }
+                }
+            }
+        } catch (SecurityException | IllegalArgumentException ignored) {
+        }
+        return addresses;
+    }
+
+    static final class SearchSelection {
+        final String selection;
+        final String[] args;
+
+        SearchSelection(String selection, String[] args) {
+            this.selection = selection;
+            this.args = args;
+        }
     }
 
     private static List<Conversation> sampleConversations() {
