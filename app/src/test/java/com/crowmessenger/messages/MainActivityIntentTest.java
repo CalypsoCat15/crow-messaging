@@ -376,6 +376,13 @@ public class MainActivityIntentTest {
                 java.util.List.of(message),
                 java.util.List.of(failedMessage)
         ));
+
+        ChatMessage optimisticIncoming = new ChatMessage("Hello", 100L, false);
+        ChatMessage storedIncoming = ChatMessage.storedSms("Hello", "42", 100L, false);
+        assertFalse(MainActivity.sameMessageRows(
+                java.util.List.of(optimisticIncoming),
+                java.util.List.of(storedIncoming)
+        ));
     }
 
     @Test

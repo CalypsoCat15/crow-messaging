@@ -2871,6 +2871,8 @@ public class MainActivity extends Activity {
                     || !TextUtils.equals(left.senderAddress, right.senderAddress)
                     || !TextUtils.equals(left.status, right.status)
                     || !TextUtils.equals(left.localStatusId, right.localStatusId)
+                    || !TextUtils.equals(left.sourceType, right.sourceType)
+                    || !TextUtils.equals(left.sourceId, right.sourceId)
                     || left.dateMillis != right.dateMillis
                     || left.outgoing != right.outgoing) {
                 return false;
