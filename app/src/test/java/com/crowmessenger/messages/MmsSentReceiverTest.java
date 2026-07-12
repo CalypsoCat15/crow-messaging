@@ -1,9 +1,12 @@
 package com.crowmessenger.messages;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -23,6 +26,7 @@ public class MmsSentReceiverTest {
     @Before
     public void setUp() {
         context = RuntimeEnvironment.getApplication();
+        context.getSharedPreferences("local_mms", Context.MODE_PRIVATE).edit().clear().commit();
     }
 
     @Test
@@ -38,5 +42,59 @@ public class MmsSentReceiverTest {
         assertTrue(MmsSentReceiver.isSafePduName("message.pdu"));
         assertFalse(MmsSentReceiver.isSafePduName("../message.pdu"));
         assertFalse(MmsSentReceiver.isSafePduName("message.jpg"));
+    }
+
+    @Test
+    public void handleSentResult_marksMatchingGroupTextFailedAndDeletesPdu() throws Exception {
+        String group = LocalMmsStore.outgoingGroupAddress(java.util.List.of("15551234567", "15557654321"));
+        String messageId = "group-send-result";
+        LocalMmsStore.saveSentText(context, messageId, group, "hello", 1000L);
+        File pdu = createOutgoingPdu(messageId + ".pdu");
+        Intent intent = resultIntent(pdu.getName(), group)
+                .putExtra(MmsSentReceiver.EXTRA_LOCAL_MESSAGE_ID, messageId);
+
+        assertTrue(MmsSentReceiver.handleSentResult(context, intent, Activity.RESULT_CANCELED));
+
+        assertFalse(pdu.exists());
+        assertEquals(ChatMessage.STATUS_FAILED, LocalMmsStore.loadForAddress(context, group).get(0).status);
+    }
+
+    @Test
+    public void handleSentResult_ignoresFailureWithoutMatchingLocalMessage() {
+        Intent intent = resultIntent("missing.pdu", "15551234567")
+                .putExtra(MmsSentReceiver.EXTRA_IMAGE_URI, "file:///missing.jpg");
+
+        assertFalse(MmsSentReceiver.handleSentResult(context, intent, Activity.RESULT_CANCELED));
+        assertTrue(LocalMmsStore.loadForAddress(context, "15551234567").isEmpty());
+    }
+
+    @Test
+    public void handleSentResult_successDeletesPduWithoutChangingMessageStatus() throws Exception {
+        String group = LocalMmsStore.outgoingGroupAddress(java.util.List.of("15551234567", "15557654321"));
+        String messageId = "successful-group-send";
+        LocalMmsStore.saveSentText(context, messageId, group, "hello", 1000L);
+        File pdu = createOutgoingPdu(messageId + ".pdu");
+        Intent intent = resultIntent(pdu.getName(), group)
+                .putExtra(MmsSentReceiver.EXTRA_LOCAL_MESSAGE_ID, messageId);
+
+        assertFalse(MmsSentReceiver.handleSentResult(context, intent, Activity.RESULT_OK));
+
+        assertFalse(pdu.exists());
+        assertEquals("", LocalMmsStore.loadForAddress(context, group).get(0).status);
+    }
+
+    private Intent resultIntent(String pduName, String address) {
+        return new Intent(context, MmsSentReceiver.class)
+                .setAction(MmsSentReceiver.ACTION_MMS_SENT)
+                .putExtra(MmsSentReceiver.EXTRA_PDU_NAME, pduName)
+                .putExtra(MmsSentReceiver.EXTRA_ADDRESS, address);
+    }
+
+    private File createOutgoingPdu(String name) throws Exception {
+        File pdu = new File(MmsFiles.appFileDir(context, MmsFiles.OUTGOING_DIR), name);
+        try (FileOutputStream output = new FileOutputStream(pdu)) {
+            output.write(new byte[] { 1, 2, 3 });
+        }
+        return pdu;
     }
 }
