@@ -7,6 +7,7 @@ import java.util.Set;
 
 final class AddressUtil {
     private static final int MIN_SUFFIX_MATCH_DIGITS = 7;
+    private static final String SMS_RECIPIENT_CHARACTERS = "+0123456789().- ";
 
     private AddressUtil() {
     }
@@ -51,6 +52,19 @@ final class AddressUtil {
 
     static boolean hasSinglePhoneAddress(String address) {
         return !LocalMmsStore.isGroupAddress(address) && !TextUtils.isEmpty(digits(address));
+    }
+
+    static boolean isSendableSmsRecipient(String address) {
+        if (!hasSinglePhoneAddress(address)) {
+            return false;
+        }
+        String value = address.trim();
+        for (int index = 0; index < value.length(); index++) {
+            if (SMS_RECIPIENT_CHARACTERS.indexOf(value.charAt(index)) < 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     static boolean isMatchingPhoneValue(String address, String storedValue) {

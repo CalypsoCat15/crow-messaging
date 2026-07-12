@@ -23,6 +23,8 @@ public class HeadlessSmsSendService extends Service {
                 MessageUpdateBroadcaster.broadcast(this, request.address);
             } catch (SmsSender.SendException ex) {
                 MessageNotifier.showSendFailed(this, request.address, ex.getMessage());
+            } catch (RuntimeException ex) {
+                MessageNotifier.showSendFailed(this, request.address, "Android could not send the text.");
             } finally {
                 stopSelf(startId);
             }
@@ -41,7 +43,7 @@ public class HeadlessSmsSendService extends Service {
         }
         String address = addressFromData(intent.getData());
         String body = bodyFromIntent(intent);
-        if (TextUtils.isEmpty(address) || TextUtils.isEmpty(body)) {
+        if (!AddressUtil.isSendableSmsRecipient(address) || TextUtils.isEmpty(body)) {
             return null;
         }
         return new ReplyRequest(address, body);

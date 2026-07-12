@@ -47,4 +47,18 @@ public class AddressUtilTest {
         assertFalse(values.contains("+1 (555) 123-4567"));
         assertTrue(values.contains("15557654321"));
     }
+
+    @Test
+    public void sendableRecipient_acceptsFormattedNumbersAndShortCodes() {
+        assertTrue(AddressUtil.isSendableSmsRecipient("+1 (555) 123-4567"));
+        assertTrue(AddressUtil.isSendableSmsRecipient("31354"));
+    }
+
+    @Test
+    public void sendableRecipient_rejectsNamesGroupsAndRecipientLists() {
+        assertFalse(AddressUtil.isSendableSmsRecipient("call-me-at-5551234567"));
+        assertFalse(AddressUtil.isSendableSmsRecipient("15551234567,15557654321"));
+        assertFalse(AddressUtil.isSendableSmsRecipient("group:15551234567|15557654321"));
+        assertFalse(AddressUtil.isSendableSmsRecipient("no-number"));
+    }
 }

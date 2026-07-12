@@ -70,4 +70,19 @@ public class HeadlessSmsSendServiceTest {
 
         assertNull(HeadlessSmsSendService.replyRequest(intent));
     }
+
+    @Test
+    public void replyRequest_rejectsMalformedOrMultipleRecipients() {
+        Intent malformed = new Intent(
+                HeadlessSmsSendService.ACTION_RESPOND_VIA_MESSAGE,
+                Uri.parse("smsto:call-me-at-5551234567")
+        ).putExtra(Intent.EXTRA_TEXT, "hello");
+        Intent multiple = new Intent(
+                HeadlessSmsSendService.ACTION_RESPOND_VIA_MESSAGE,
+                Uri.parse("smsto:15551234567,15557654321")
+        ).putExtra(Intent.EXTRA_TEXT, "hello");
+
+        assertNull(HeadlessSmsSendService.replyRequest(malformed));
+        assertNull(HeadlessSmsSendService.replyRequest(multiple));
+    }
 }

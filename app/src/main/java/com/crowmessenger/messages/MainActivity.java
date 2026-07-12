@@ -383,6 +383,9 @@ public class MainActivity extends Activity {
             return null;
         }
         address = TextUtils.isEmpty(address) ? "" : address.trim();
+        if (!TextUtils.isEmpty(address) && !AddressUtil.isSendableSmsRecipient(address)) {
+            address = "";
+        }
         body = TextUtils.isEmpty(body) ? "" : body.trim();
         if (TextUtils.isEmpty(address) && TextUtils.isEmpty(body) && imageUris.isEmpty()) {
             return null;
@@ -423,10 +426,19 @@ public class MainActivity extends Activity {
     }
 
     private static void addUniqueImageUri(List<Uri> target, Uri uri) {
-        if (target == null || uri == null || target.contains(uri) || target.size() >= MAX_ATTACHED_IMAGES) {
+        if (target == null
+                || !isSupportedImageUri(uri)
+                || target.contains(uri)
+                || target.size() >= MAX_ATTACHED_IMAGES) {
             return;
         }
         target.add(uri);
+    }
+
+    static boolean isSupportedImageUri(Uri uri) {
+        return uri != null
+                && "content".equalsIgnoreCase(uri.getScheme())
+                && !TextUtils.isEmpty(uri.getAuthority());
     }
 
     private void persistSharedImagePermission(Intent intent, Uri uri) {
@@ -4861,8 +4873,8 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "That contact does not have a phone number.", Toast.LENGTH_SHORT).show();
             return false;
         }
-        if (TextUtils.isEmpty(AddressUtil.digits(number))) {
-            Toast.makeText(this, "Type a phone number first.", Toast.LENGTH_SHORT).show();
+        if (!AddressUtil.isSendableSmsRecipient(number)) {
+            Toast.makeText(this, "Type a valid phone number first.", Toast.LENGTH_SHORT).show();
             return false;
         }
         for (ComposeRecipient recipient : composeRecipients) {

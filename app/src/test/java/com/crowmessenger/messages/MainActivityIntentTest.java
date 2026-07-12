@@ -126,6 +126,39 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void composeIntent_ignoresUnsafeImageLinks() {
+        Intent intent = new Intent(Intent.ACTION_SEND_MULTIPLE)
+                .setType("image/jpeg")
+                .putParcelableArrayListExtra(
+                        Intent.EXTRA_STREAM,
+                        new java.util.ArrayList<>(java.util.List.of(
+                                Uri.parse("file:///sdcard/private.jpg"),
+                                Uri.parse("https://example.com/picture.jpg"),
+                                Uri.parse("content://gallery/picture/48")
+                        ))
+                );
+
+        MainActivity.ComposeIntent request = MainActivity.composeIntent(intent);
+
+        assertNotNull(request);
+        assertEquals(java.util.List.of(Uri.parse("content://gallery/picture/48")), request.imageUris);
+    }
+
+    @Test
+    public void composeIntent_dropsMalformedExternalRecipientButKeepsBody() {
+        Intent intent = new Intent(
+                Intent.ACTION_SENDTO,
+                Uri.parse("smsto:call-me-at-5551234567?body=Hello")
+        );
+
+        MainActivity.ComposeIntent request = MainActivity.composeIntent(intent);
+
+        assertNotNull(request);
+        assertEquals("", request.address);
+        assertEquals("Hello", request.body);
+    }
+
+    @Test
     public void composeIntent_rejectsEmptyExternalSendIntent() {
         assertNull(MainActivity.composeIntent(new Intent(Intent.ACTION_SEND)));
         assertNull(MainActivity.composeIntent(new Intent(Intent.ACTION_VIEW, Uri.parse("smsto:+15551234567"))));
