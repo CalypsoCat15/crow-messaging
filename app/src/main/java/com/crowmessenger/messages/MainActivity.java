@@ -3189,7 +3189,7 @@ public class MainActivity extends Activity {
                     if (blocked) {
                         Blocklist.unblock(this, conversation.address);
                     } else {
-                        Blocklist.block(this, conversation.address);
+                        ConversationSuppression.block(this, conversation.address);
                     }
                     discardCachedInboxScreen();
                     showInbox();
@@ -3199,7 +3199,7 @@ public class MainActivity extends Activity {
     }
 
     private void markConversationSpam(Conversation conversation) {
-        SpamFilter.markSpam(this, conversation.address, conversation.threadId);
+        ConversationSuppression.markSpam(this, conversation.address, conversation.threadId);
         discardCachedInboxScreen();
         searchQuery = "";
         showingBlocked = true;
@@ -4172,7 +4172,7 @@ public class MainActivity extends Activity {
 
     private void moveConversationToTrash(Conversation conversation) {
         flushPendingDraft();
-        TrashStore.moveToTrash(this, conversation);
+        ConversationSuppression.moveToTrash(this, conversation);
         InboxSnapshotStore.remove(this, conversation.address);
         discardCachedInboxScreen();
         discardConversationCaches(conversation.address);
