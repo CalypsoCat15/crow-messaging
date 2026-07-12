@@ -60,8 +60,8 @@ public class NotificationActionReceiver extends BroadcastReceiver {
     }
 
     static void markRead(Context context, String address) {
-        SmsStore.markAddressRead(context, address);
         MessageNotifier.clearIncomingForAddress(context, address);
+        SmsStore.markAddressReadVerified(context, address);
         MessageUpdateBroadcaster.broadcast(context, address);
     }
 

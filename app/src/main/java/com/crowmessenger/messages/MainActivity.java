@@ -1919,7 +1919,7 @@ public class MainActivity extends Activity {
         scroll.addView(messages);
         threadArea.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
         Button jumpToBottom = new Button(this);
-        jumpToBottom.setText("Newest");
+        jumpToBottom.setText(R.string.newest_messages);
         jumpToBottom.setAllCaps(false);
         jumpToBottom.setTextColor(BLACK);
         jumpToBottom.setTextSize(14);
@@ -1934,7 +1934,7 @@ public class MainActivity extends Activity {
         jumpToBottom.setOnClickListener(v -> {
             performTapFeedback(v);
             scroll.fullScroll(View.FOCUS_DOWN);
-            jumpToBottom.setText("Newest");
+            jumpToBottom.setText(R.string.newest_messages);
             jumpToBottom.setVisibility(View.GONE);
         });
         FrameLayout.LayoutParams jumpParams = new FrameLayout.LayoutParams(dp(116), dp(44), Gravity.END | Gravity.BOTTOM);
@@ -1942,10 +1942,10 @@ public class MainActivity extends Activity {
         threadArea.addView(jumpToBottom, jumpParams);
         scroll.setOnScrollChangeListener((view, scrollX, scrollY, oldScrollX, oldScrollY) -> {
             if (isScrollNearBottom(scroll, dp(120))) {
-                jumpToBottom.setText("Newest");
+                jumpToBottom.setText(R.string.newest_messages);
                 jumpToBottom.setVisibility(View.GONE);
             } else if (jumpToBottom.getVisibility() != View.VISIBLE) {
-                jumpToBottom.setText("Newest");
+                jumpToBottom.setText(R.string.newest_messages);
                 jumpToBottom.setVisibility(View.VISIBLE);
             }
         });
@@ -3020,7 +3020,7 @@ public class MainActivity extends Activity {
         int bottom = Math.max(0, activeMessagesList.getHeight() - activeScrollView.getHeight());
         activeScrollView.scrollTo(0, bottom);
         if (activeJumpToBottomButton != null) {
-            activeJumpToBottomButton.setText("Newest");
+            activeJumpToBottomButton.setText(R.string.newest_messages);
             activeJumpToBottomButton.setVisibility(View.GONE);
         }
     }
@@ -3029,7 +3029,7 @@ public class MainActivity extends Activity {
         if (activeJumpToBottomButton == null) {
             return;
         }
-        activeJumpToBottomButton.setText("New message");
+        activeJumpToBottomButton.setText(R.string.new_message);
         activeJumpToBottomButton.setVisibility(View.VISIBLE);
     }
 

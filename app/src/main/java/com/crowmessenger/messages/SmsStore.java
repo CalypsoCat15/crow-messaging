@@ -605,8 +605,8 @@ final class SmsStore {
         }
     }
 
-    static void markAddressRead(Context context, String address) {
-        markConversationRead(context, findThreadIdForAddress(context, address), address);
+    static boolean markAddressReadVerified(Context context, String address) {
+        return markConversationReadVerified(context, findThreadIdForAddress(context, address), address);
     }
 
     private static void markMmsThreadRead(Context context, String threadId) {

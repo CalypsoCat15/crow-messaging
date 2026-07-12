@@ -42,6 +42,8 @@ public class NotificationActionReceiverTest {
 
     @Test
     public void markReadClearsRememberedNotifications() {
+        TestSmsProvider.install();
+        TestSmsProvider.add("7", "thread", "15551234567", false, false);
         int stableId = AddressUtil.stableId("15551234567");
         context.getSharedPreferences("message_notifications", Context.MODE_PRIVATE).edit()
                 .putStringSet("ids_" + stableId, new HashSet<>(List.of("101")))
@@ -52,5 +54,16 @@ public class NotificationActionReceiverTest {
 
         assertFalse(context.getSharedPreferences("message_notifications", Context.MODE_PRIVATE)
                 .contains("ids_" + stableId));
+        org.junit.Assert.assertTrue(TestSmsProvider.isReadAndSeen("7"));
+    }
+
+    @Test
+    public void markReadHandlesFormattedShortCodeWhenThreadLookupIsUnavailable() {
+        TestSmsProvider.install();
+        TestSmsProvider.add("8", "thread", "31354", false, false);
+
+        NotificationActionReceiver.markRead(context, "31-354");
+
+        org.junit.Assert.assertTrue(TestSmsProvider.isReadAndSeen("8"));
     }
 }

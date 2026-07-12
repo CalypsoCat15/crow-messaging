@@ -10,4 +10,6 @@
     <string name="schedule_time_label">Time: %1$s</string>
     <string name="copy_verification_code">Copy code  %1$s</string>
     <string name="searching_messages">Searching&#8230;</string>
+    <string name="newest_messages">Newest</string>
+    <string name="new_message">New message</string>
 </resources>
