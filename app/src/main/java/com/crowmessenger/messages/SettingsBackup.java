@@ -13,6 +13,7 @@ import java.util.List;
 final class SettingsBackup {
     private static final String FORMAT = "crow-settings";
     private static final int VERSION = 1;
+    static final int MAX_BACKUP_CHARACTERS = 256 * 1024;
 
     private SettingsBackup() {
     }
@@ -30,6 +31,9 @@ final class SettingsBackup {
     static int restore(Context context, String rawBackup) throws JSONException {
         if (context == null || TextUtils.isEmpty(rawBackup)) {
             throw new JSONException("Backup is empty");
+        }
+        if (rawBackup.length() > MAX_BACKUP_CHARACTERS) {
+            throw new JSONException("Backup is too large");
         }
         JSONObject backup = new JSONObject(rawBackup);
         if (!FORMAT.equals(backup.optString("format")) || backup.optInt("version", -1) != VERSION) {

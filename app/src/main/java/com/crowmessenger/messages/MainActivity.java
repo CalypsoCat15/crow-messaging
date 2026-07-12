@@ -4752,30 +4752,58 @@ public class MainActivity extends Activity {
     }
 
     private void writeSettingsBackup(Uri destination) {
-        try (OutputStream output = getContentResolver().openOutputStream(destination, "w")) {
-            if (output == null) {
-                throw new IllegalStateException("No output stream");
+        Context appContext = getApplicationContext();
+        stateWriter.submit(() -> {
+            boolean saved = false;
+            try (OutputStream output = appContext.getContentResolver().openOutputStream(destination, "w")) {
+                if (output == null) {
+                    throw new IllegalStateException("No output stream");
+                }
+                output.write(SettingsBackup.create(appContext).getBytes(StandardCharsets.UTF_8));
+                saved = true;
+            } catch (Exception ignored) {
             }
-            output.write(SettingsBackup.create(this).getBytes(StandardCharsets.UTF_8));
-            Toast.makeText(this, "Settings backup saved.", Toast.LENGTH_SHORT).show();
-        } catch (Exception ignored) {
-            Toast.makeText(this, "Settings backup could not be saved.", Toast.LENGTH_SHORT).show();
-        }
+            boolean completed = saved;
+            runOnUiThread(() -> showBackupResult(
+                    completed ? "Settings backup saved." : "Settings backup could not be saved."
+            ));
+        });
     }
 
     private void restoreSettingsBackup(Uri source) {
-        try (InputStream input = getContentResolver().openInputStream(source)) {
-            if (input == null) {
-                throw new IllegalStateException("No input stream");
+        Context appContext = getApplicationContext();
+        stateWriter.submit(() -> {
+            boolean restored = false;
+            try (InputStream input = appContext.getContentResolver().openInputStream(source)) {
+                if (input == null) {
+                    throw new IllegalStateException("No input stream");
+                }
+                String rawBackup = readSmallText(input, SettingsBackup.MAX_BACKUP_CHARACTERS);
+                SettingsBackup.restore(appContext, rawBackup);
+                restored = true;
+            } catch (Exception ignored) {
             }
-            String rawBackup = readSmallText(input, 256 * 1024);
-            SettingsBackup.restore(this, rawBackup);
-            discardCachedInboxScreen();
-            Toast.makeText(this, "Crow settings restored.", Toast.LENGTH_SHORT).show();
-            showInbox();
-        } catch (Exception ignored) {
-            Toast.makeText(this, "That Crow settings backup could not be restored.", Toast.LENGTH_SHORT).show();
+            boolean completed = restored;
+            runOnUiThread(() -> {
+                if (!showBackupResult(completed
+                        ? "Crow settings restored."
+                        : "That Crow settings backup could not be restored.")) {
+                    return;
+                }
+                if (completed) {
+                    discardCachedInboxScreen();
+                    showInbox();
+                }
+            });
+        });
+    }
+
+    private boolean showBackupResult(String message) {
+        if (isDestroyed() || isFinishing()) {
+            return false;
         }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+        return true;
     }
 
     static String readSmallText(InputStream input, int maxCharacters) throws Exception {

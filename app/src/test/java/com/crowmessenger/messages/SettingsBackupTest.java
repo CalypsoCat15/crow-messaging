@@ -93,4 +93,14 @@ public class SettingsBackupTest {
                 4
         );
     }
+
+    @Test
+    public void restoreRejectsOversizedRawBackupBeforeParsing() {
+        String oversized = " ".repeat(SettingsBackup.MAX_BACKUP_CHARACTERS + 1);
+
+        org.junit.Assert.assertThrows(
+                org.json.JSONException.class,
+                () -> SettingsBackup.restore(context, oversized)
+        );
+    }
 }
