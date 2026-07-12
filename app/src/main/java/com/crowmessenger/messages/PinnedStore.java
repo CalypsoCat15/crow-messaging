@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.text.TextUtils;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 final class PinnedStore {
@@ -15,9 +16,36 @@ final class PinnedStore {
     }
 
     static boolean isPinned(Context context, String address) {
-        String key = key(address);
-        Set<String> pins = pins(context);
-        return !TextUtils.isEmpty(key) && (pins.contains(key) || AddressUtil.containsMatchingPhoneValue(pins, address));
+        return new Matcher(pins(context)).isPinned(address);
+    }
+
+    static void sortConversations(Context context, List<Conversation> conversations) {
+        if (conversations == null || conversations.size() < 2) {
+            return;
+        }
+        Matcher matcher = new Matcher(pins(context));
+        conversations.sort((left, right) -> {
+            boolean leftPinned = matcher.isPinned(left.address);
+            boolean rightPinned = matcher.isPinned(right.address);
+            if (leftPinned != rightPinned) {
+                return leftPinned ? -1 : 1;
+            }
+            return Long.compare(right.dateMillis, left.dateMillis);
+        });
+    }
+
+    private static final class Matcher {
+        private final Set<String> pins;
+
+        private Matcher(Set<String> pins) {
+            this.pins = pins;
+        }
+
+        private boolean isPinned(String address) {
+            String key = key(address);
+            return !TextUtils.isEmpty(key)
+                    && (pins.contains(key) || AddressUtil.containsMatchingPhoneValue(pins, address));
+        }
     }
 
     static void pin(Context context, String address) {

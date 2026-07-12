@@ -1476,14 +1476,7 @@ public class MainActivity extends Activity {
     }
 
     private void sortInboxRows(List<Conversation> conversations) {
-        conversations.sort((left, right) -> {
-            boolean leftPinned = PinnedStore.isPinned(this, left.address);
-            boolean rightPinned = PinnedStore.isPinned(this, right.address);
-            if (leftPinned != rightPinned) {
-                return leftPinned ? -1 : 1;
-            }
-            return Long.compare(right.dateMillis, left.dateMillis);
-        });
+        PinnedStore.sortConversations(this, conversations);
     }
 
     private void prefetchVisibleThreads(List<Conversation> conversations, boolean blockedOnly) {

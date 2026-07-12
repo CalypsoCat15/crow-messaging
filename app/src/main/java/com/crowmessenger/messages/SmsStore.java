@@ -161,14 +161,7 @@ final class SmsStore {
             mergeDraftConversation(context, conversations, draft, blockedOnly, query, matchingContactAddresses);
         }
         TrashStore.removeHidden(context, conversations);
-        conversations.sort((left, right) -> {
-            boolean leftPinned = PinnedStore.isPinned(context, left.address);
-            boolean rightPinned = PinnedStore.isPinned(context, right.address);
-            if (leftPinned != rightPinned) {
-                return leftPinned ? -1 : 1;
-            }
-            return Long.compare(right.dateMillis, left.dateMillis);
-        });
+        PinnedStore.sortConversations(context, conversations);
         if (conversations.isEmpty() && smsUnavailable && !blockedOnly && TextUtils.isEmpty(query)) {
             return sampleConversations();
         }

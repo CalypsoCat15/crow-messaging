@@ -16,6 +16,7 @@ import org.robolectric.annotation.Config;
 
 import java.util.List;
 import java.util.HashSet;
+import java.util.ArrayList;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
@@ -72,5 +73,23 @@ public class PinnedStoreTest {
                 new HashSet<>(List.of("15551234567")),
                 prefs.getStringSet("addresses", new HashSet<>())
         );
+    }
+
+    @Test
+    public void sortConversations_putsPinsFirstAndNewestWithinEachSection() {
+        PinnedStore.pin(context, "+1 (555) 123-4567");
+        ArrayList<Conversation> conversations = new ArrayList<>(List.of(
+                new Conversation("1", "15550000001", "Newest", "", "", 400L, 0),
+                new Conversation("2", "5551234567", "Pinned older", "", "", 100L, 0),
+                new Conversation("3", "15551234567", "Pinned newer", "", "", 300L, 0),
+                new Conversation("4", "15550000002", "Older", "", "", 200L, 0)
+        ));
+
+        PinnedStore.sortConversations(context, conversations);
+
+        assertEquals("Pinned newer", conversations.get(0).name);
+        assertEquals("Pinned older", conversations.get(1).name);
+        assertEquals("Newest", conversations.get(2).name);
+        assertEquals("Older", conversations.get(3).name);
     }
 }
