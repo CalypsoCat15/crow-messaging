@@ -124,6 +124,30 @@ public class SmsStoreTest {
     }
 
     @Test
+    public void savedIncomingSms_isExplicitlyUnreadAndUnseen() {
+        Context context = RuntimeEnvironment.getApplication();
+        TestSmsProvider.install();
+
+        assertTrue(SmsStore.saveIncomingSms(context, "31354", "hello", 1000L));
+
+        android.content.ContentValues values = TestSmsProvider.lastInsertedValues();
+        assertEquals(Integer.valueOf(0), values.getAsInteger(android.provider.Telephony.Sms.READ));
+        assertEquals(Integer.valueOf(0), values.getAsInteger(android.provider.Telephony.Sms.SEEN));
+    }
+
+    @Test
+    public void savedSentSms_isExplicitlyReadAndSeen() {
+        Context context = RuntimeEnvironment.getApplication();
+        TestSmsProvider.install();
+
+        assertTrue(SmsStore.saveSentSms(context, "31354", "hello", 1000L));
+
+        android.content.ContentValues values = TestSmsProvider.lastInsertedValues();
+        assertEquals(Integer.valueOf(1), values.getAsInteger(android.provider.Telephony.Sms.READ));
+        assertEquals(Integer.valueOf(1), values.getAsInteger(android.provider.Telephony.Sms.SEEN));
+    }
+
+    @Test
     public void verifiedRead_fallsBackToShortCodeWhenThreadIdIsStale() {
         Context context = RuntimeEnvironment.getApplication();
         TestSmsProvider.install();
@@ -131,6 +155,15 @@ public class SmsStoreTest {
 
         assertTrue(SmsStore.markConversationReadVerified(context, "stale-thread", "31354"));
         assertTrue(TestSmsProvider.isReadAndSeen("7"));
+    }
+
+    @Test
+    public void verifiedRead_doesNotReportSuccessWhenProviderCannotBeChecked() {
+        Context context = RuntimeEnvironment.getApplication();
+        TestSmsProvider.install();
+        TestSmsProvider.setQueryUnavailable(true);
+
+        assertFalse(SmsStore.markConversationReadVerified(context, "thread", "31354"));
     }
 
     @Test

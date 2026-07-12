@@ -522,6 +522,7 @@ final class SmsStore {
         values.put(Telephony.Sms.BODY, body);
         values.put(Telephony.Sms.DATE, dateMillis);
         values.put(Telephony.Sms.READ, read);
+        values.put(Telephony.Sms.SEEN, read);
         values.put(Telephony.Sms.TYPE, type);
         try {
             return context.getContentResolver().insert(uri, values) != null;
@@ -638,7 +639,8 @@ final class SmsStore {
     static boolean markConversationReadVerified(Context context, String threadId, String address) {
         for (int attempt = 0; attempt < 3; attempt++) {
             markConversationRead(context, threadId, address);
-            if (!hasUnreadSmsForAddress(context, address)) {
+            UnreadSmsState state = unreadSmsState(context, address);
+            if (state == UnreadSmsState.NONE) {
                 return true;
             }
             if (attempt < 2) {
@@ -650,7 +652,7 @@ final class SmsStore {
                 }
             }
         }
-        return !hasUnreadSmsForAddress(context, address);
+        return unreadSmsState(context, address) == UnreadSmsState.NONE;
     }
 
     static void markAllRead(Context context) {
@@ -852,8 +854,36 @@ final class SmsStore {
         return ids;
     }
 
-    private static boolean hasUnreadSmsForAddress(Context context, String address) {
-        return !recentSmsIdsForMatchingAddress(context, address, true).isEmpty();
+    private static UnreadSmsState unreadSmsState(Context context, String address) {
+        String target = AddressUtil.digits(address);
+        if (TextUtils.isEmpty(target)) {
+            return UnreadSmsState.NONE;
+        }
+        String selection = "(" + Telephony.Sms.READ + "=0 OR " + Telephony.Sms.SEEN + "=0)";
+        try (Cursor cursor = context.getContentResolver().query(
+                SMS_URI,
+                SMS_ID_ADDRESS_COLUMNS,
+                selection,
+                null,
+                Telephony.Sms.DATE + " DESC LIMIT 500")) {
+            if (cursor == null) {
+                return UnreadSmsState.UNKNOWN;
+            }
+            while (cursor.moveToNext()) {
+                if (AddressUtil.sameDigits(target, cursor.getString(1))) {
+                    return UnreadSmsState.PRESENT;
+                }
+            }
+            return UnreadSmsState.NONE;
+        } catch (SecurityException | IllegalArgumentException ex) {
+            return UnreadSmsState.UNKNOWN;
+        }
+    }
+
+    private enum UnreadSmsState {
+        NONE,
+        PRESENT,
+        UNKNOWN
     }
 
     private static String findAddressForThread(Context context, String threadId) {

@@ -85,8 +85,9 @@ public class SmsDeliverReceiver extends BroadcastReceiver {
         if (!saved) {
             LocalMmsStore.saveNotice(context, incoming.address, body, receivedAt);
         }
-        MessageUpdateBroadcaster.broadcastIncomingSms(context, incoming.address, body, receivedAt);
+        // Post first so an already-open conversation can clear it when the UI receives the update.
         MessageNotifier.showIncoming(context, incoming.address, body, receivedAt);
+        MessageUpdateBroadcaster.broadcastIncomingSms(context, incoming.address, body, receivedAt);
         return saved;
     }
 

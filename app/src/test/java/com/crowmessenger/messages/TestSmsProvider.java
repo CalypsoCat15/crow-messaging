@@ -14,10 +14,22 @@ import java.util.List;
 
 final class TestSmsProvider extends ContentProvider {
     private static final List<Row> ROWS = new ArrayList<>();
+    private static boolean queryUnavailable;
+    private static ContentValues lastInsertedValues;
 
     static void install() {
         ROWS.clear();
+        queryUnavailable = false;
+        lastInsertedValues = null;
         ShadowContentResolver.registerProviderInternal("sms", new TestSmsProvider());
+    }
+
+    static void setQueryUnavailable(boolean unavailable) {
+        queryUnavailable = unavailable;
+    }
+
+    static ContentValues lastInsertedValues() {
+        return lastInsertedValues;
     }
 
     static void add(String id, String threadId, String address, boolean read, boolean seen) {
@@ -40,6 +52,9 @@ final class TestSmsProvider extends ContentProvider {
 
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
+        if (queryUnavailable) {
+            return null;
+        }
         String[] columns = projection == null
                 ? new String[] { Telephony.Sms._ID, Telephony.Sms.ADDRESS }
                 : projection;
@@ -114,7 +129,8 @@ final class TestSmsProvider extends ContentProvider {
 
     @Override
     public Uri insert(Uri uri, ContentValues values) {
-        return null;
+        lastInsertedValues = new ContentValues(values);
+        return Uri.withAppendedPath(uri, "inserted");
     }
 
     @Override
