@@ -62,16 +62,18 @@ final class SmsStore {
         };
         if (useSearchIndex) {
             for (SearchThread indexed : SMS_SEARCH_INDEX) {
-                if (indexed.matches(query)) {
-                    ConversationBuilder builder = new ConversationBuilder(
-                            indexed.threadId,
-                            indexed.address,
-                            indexed.snippet,
-                            indexed.dateMillis
-                    );
-                    builder.unreadCount = indexed.unreadCount;
-                    byThread.put(indexed.threadId, builder);
+                SearchThread.Match match = indexed.match(query);
+                if (match == null) {
+                    continue;
                 }
+                ConversationBuilder builder = new ConversationBuilder(
+                        indexed.threadId,
+                        indexed.address,
+                        match.snippet,
+                        match.dateMillis
+                );
+                builder.unreadCount = indexed.unreadCount;
+                byThread.put(indexed.threadId, builder);
             }
         } else {
             SearchSelection searchSelection = searchSelection(query, matchingContactAddresses);
@@ -116,7 +118,7 @@ final class SmsStore {
                             builder = new ConversationBuilder(threadId, address, body, date);
                             byThread.put(threadId, builder);
                         }
-                        builder.addSearchText(body);
+                        builder.addSearchMessage(body, date);
                         if (unread) {
                             builder.unreadCount++;
                         }
@@ -982,7 +984,7 @@ final class SmsStore {
         for (Conversation conversation : conversations) {
             ConversationBuilder builder = builders.get(conversation.threadId);
             if (builder != null) {
-                updated.add(new SearchThread(conversation, builder.searchText.toString()));
+                updated.add(new SearchThread(conversation, builder.searchMessages));
             }
         }
         SMS_SEARCH_INDEX = Collections.unmodifiableList(updated);
@@ -1025,21 +1027,46 @@ final class SmsStore {
         final String snippet;
         final long dateMillis;
         final int unreadCount;
-        final String searchableText;
+        final String contactText;
+        final List<SearchMessage> messages;
 
         SearchThread(Conversation conversation, String messageText) {
+            this(conversation, searchMessages(messageText, conversation.dateMillis));
+        }
+
+        SearchThread(Conversation conversation, List<SearchMessage> messages) {
             threadId = conversation.threadId;
             address = conversation.address;
             snippet = conversation.snippet;
             dateMillis = conversation.dateMillis;
             unreadCount = conversation.unreadCount;
-            searchableText = (conversation.address + " " + conversation.name + " " + messageText)
+            contactText = (conversation.address + " " + conversation.name)
                     .toLowerCase(Locale.getDefault());
+            this.messages = Collections.unmodifiableList(new ArrayList<>(messages));
         }
 
         boolean matches(String query) {
-            return TextUtils.isEmpty(query)
-                    || searchableText.contains(query.trim().toLowerCase(Locale.getDefault()));
+            return match(query) != null;
+        }
+
+        Match match(String query) {
+            if (TextUtils.isEmpty(query)) {
+                return new Match(snippet, dateMillis);
+            }
+            String needle = query.trim();
+            if (TextUtils.isEmpty(needle)) {
+                return new Match(snippet, dateMillis);
+            }
+            for (SearchMessage message : messages) {
+                if (containsIgnoreCase(message.body, needle)) {
+                    return new Match(message.body, message.dateMillis);
+                }
+            }
+            String lowerNeedle = needle.toLowerCase(Locale.getDefault());
+            if (address.toLowerCase(Locale.getDefault()).contains(lowerNeedle)) {
+                return new Match(address, dateMillis);
+            }
+            return contactText.contains(lowerNeedle) ? new Match(snippet, dateMillis) : null;
         }
 
         SearchThread withUnreadCount(int unreadCount) {
@@ -1049,7 +1076,8 @@ final class SmsStore {
                     snippet,
                     dateMillis,
                     Math.max(0, unreadCount),
-                    searchableText
+                    contactText,
+                    messages
             );
         }
 
@@ -1059,14 +1087,61 @@ final class SmsStore {
                 String snippet,
                 long dateMillis,
                 int unreadCount,
-                String searchableText
+                String contactText,
+                List<SearchMessage> messages
         ) {
             this.threadId = threadId;
             this.address = address;
             this.snippet = snippet;
             this.dateMillis = dateMillis;
             this.unreadCount = unreadCount;
-            this.searchableText = searchableText;
+            this.contactText = contactText;
+            this.messages = messages;
+        }
+
+        private static List<SearchMessage> searchMessages(String messageText, long dateMillis) {
+            ArrayList<SearchMessage> messages = new ArrayList<>();
+            if (!TextUtils.isEmpty(messageText)) {
+                for (String body : messageText.split("\\n")) {
+                    if (!TextUtils.isEmpty(body)) {
+                        messages.add(new SearchMessage(body, dateMillis));
+                    }
+                }
+            }
+            return messages;
+        }
+
+        static final class Match {
+            final String snippet;
+            final long dateMillis;
+
+            Match(String snippet, long dateMillis) {
+                this.snippet = snippet;
+                this.dateMillis = dateMillis;
+            }
+        }
+    }
+
+    private static boolean containsIgnoreCase(String body, String query) {
+        if (TextUtils.isEmpty(body) || TextUtils.isEmpty(query) || query.length() > body.length()) {
+            return false;
+        }
+        int lastStart = body.length() - query.length();
+        for (int start = 0; start <= lastStart; start++) {
+            if (body.regionMatches(true, start, query, 0, query.length())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static final class SearchMessage {
+        final String body;
+        final long dateMillis;
+
+        SearchMessage(String body, long dateMillis) {
+            this.body = TextUtils.isEmpty(body) ? "" : body;
+            this.dateMillis = dateMillis;
         }
     }
 
@@ -1084,7 +1159,7 @@ final class SmsStore {
         final String snippet;
         final long dateMillis;
         int unreadCount;
-        final StringBuilder searchText = new StringBuilder();
+        final List<SearchMessage> searchMessages = new ArrayList<>();
 
         ConversationBuilder(String threadId, String address, String snippet, long dateMillis) {
             this.threadId = threadId;
@@ -1093,9 +1168,9 @@ final class SmsStore {
             this.dateMillis = dateMillis;
         }
 
-        void addSearchText(String body) {
+        void addSearchMessage(String body, long dateMillis) {
             if (!TextUtils.isEmpty(body)) {
-                searchText.append(body).append('\n');
+                searchMessages.add(new SearchMessage(body, dateMillis));
             }
         }
     }

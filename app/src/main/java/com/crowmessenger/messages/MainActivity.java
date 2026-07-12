@@ -1685,6 +1685,9 @@ public class MainActivity extends Activity {
         row.addView(middle, new LinearLayout.LayoutParams(0, -2, 1));
 
         TextView name = text(conversation.name, TextSizePrefs.inboxNameSp(this), TEXT, conversation.unreadCount > 0 ? Typeface.BOLD : Typeface.NORMAL);
+        if (!TextUtils.isEmpty(searchQuery)) {
+            name.setText(highlightSearchMatch(conversation.name, searchQuery.trim()));
+        }
         name.setSingleLine(true);
         name.setEllipsize(TextUtils.TruncateAt.END);
         middle.addView(name);
@@ -1704,6 +1707,9 @@ public class MainActivity extends Activity {
                 snippetColor,
                 Typeface.NORMAL
         );
+        if (!hasDraft && !TextUtils.isEmpty(searchQuery)) {
+            snippet.setText(highlightSearchMatch(conversation.snippet, searchQuery.trim()));
+        }
         snippet.setSingleLine(true);
         snippet.setEllipsize(TextUtils.TruncateAt.END);
         snippet.setPadding(0, dp(5), 0, 0);

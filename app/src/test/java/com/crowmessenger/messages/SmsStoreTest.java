@@ -59,6 +59,34 @@ public class SmsStoreTest {
     }
 
     @Test
+    public void searchIndex_returnsNewestMatchingMessageInsteadOfUnrelatedThreadSnippet() {
+        Conversation conversation = new Conversation("7", "15551234567", "Dave", "Newest unrelated message", 3000L, 0);
+        SmsStore.SearchThread indexed = new SmsStore.SearchThread(
+                conversation,
+                List.of(
+                        new SmsStore.SearchMessage("Newest unrelated message", 3000L),
+                        new SmsStore.SearchMessage("Second test result", 2000L),
+                        new SmsStore.SearchMessage("Old test result", 1000L)
+                )
+        );
+
+        SmsStore.SearchThread.Match match = indexed.match("test");
+
+        assertEquals("Second test result", match.snippet);
+        assertEquals(2000L, match.dateMillis);
+    }
+
+    @Test
+    public void searchIndex_explainsPhoneNumberMatchesWithTheNumber() {
+        Conversation conversation = new Conversation("7", "15551234567", "Dave", "Unrelated message", 3000L, 0);
+        SmsStore.SearchThread indexed = new SmsStore.SearchThread(conversation, "Unrelated message");
+
+        SmsStore.SearchThread.Match match = indexed.match("1234");
+
+        assertEquals("15551234567", match.snippet);
+    }
+
+    @Test
     public void deleteMessage_removesOnlySelectedLocalMmsRecord() {
         Context context = RuntimeEnvironment.getApplication();
         context.getSharedPreferences("local_mms", Context.MODE_PRIVATE).edit().clear().commit();
