@@ -124,6 +124,25 @@ public class SpamFilterTest {
     }
 
     @Test
+    public void markedThreadStillMatchesWhenProviderAddressChanges() {
+        SpamFilter.markSpam(context, "sender-id-original", "42");
+
+        SpamFilter.Matcher matcher = SpamFilter.matcher(context);
+        assertTrue(matcher.isMarkedSpam("sender-id-rewritten", "42"));
+        assertFalse(matcher.isMarkedSpam("sender-id-rewritten", "43"));
+    }
+
+    @Test
+    public void unmarkSpamRemovesAddressAndThreadMarkers() {
+        SpamFilter.markSpam(context, "+1 (555) 123-4567", "42");
+
+        SpamFilter.unmarkSpam(context, "15551234567", "42");
+
+        SpamFilter.Matcher matcher = SpamFilter.matcher(context);
+        assertFalse(matcher.isMarkedSpam("+1 555 123 4567", "42"));
+    }
+
+    @Test
     public void newlySavedContactIsRecognizedAfterEarlierUnknownLookup() {
         SpamFilter.addCustomKeywords(context, "donate");
         String address = "15551234567";

@@ -16,6 +16,7 @@ import java.util.Set;
 final class SpamFilter {
     private static final String PREFS = "spam_senders";
     private static final String KEY_SENDERS = "senders";
+    private static final String KEY_THREADS = "threads";
     private static final String KEY_CUSTOM_KEYWORDS = "custom_keywords";
     private static final String RAW_PREFIX = "raw:";
     private static final String TEL_PREFIX = "tel:";
@@ -32,25 +33,43 @@ final class SpamFilter {
     }
 
     static void markSpam(Context context, String address) {
+        markSpam(context, address, "");
+    }
+
+    static void markSpam(Context context, String address, String threadId) {
         String key = key(address);
-        if (TextUtils.isEmpty(key)) {
+        String threadKey = cleanThreadId(threadId);
+        if (TextUtils.isEmpty(key) && TextUtils.isEmpty(threadKey)) {
             return;
         }
         Set<String> updated = new HashSet<>(senders(context));
-        AddressUtil.removeMatchingPhoneValues(updated, address, SpamFilter::phoneSenderValue);
-        updated.add(key);
-        save(context, updated);
+        if (!TextUtils.isEmpty(key)) {
+            AddressUtil.removeMatchingPhoneValues(updated, address, SpamFilter::phoneSenderValue);
+            updated.add(key);
+        }
+        Set<String> updatedThreads = new HashSet<>(threads(context));
+        if (!TextUtils.isEmpty(threadKey)) {
+            updatedThreads.add(threadKey);
+        }
+        save(context, updated, updatedThreads);
     }
 
     static void unmarkSpam(Context context, String address) {
+        unmarkSpam(context, address, "");
+    }
+
+    static void unmarkSpam(Context context, String address, String threadId) {
         String key = key(address);
-        if (TextUtils.isEmpty(key)) {
+        String threadKey = cleanThreadId(threadId);
+        if (TextUtils.isEmpty(key) && TextUtils.isEmpty(threadKey)) {
             return;
         }
         Set<String> updated = new HashSet<>(senders(context));
         updated.remove(key);
         AddressUtil.removeMatchingPhoneValues(updated, address, SpamFilter::phoneSenderValue);
-        save(context, updated);
+        Set<String> updatedThreads = new HashSet<>(threads(context));
+        updatedThreads.remove(threadKey);
+        save(context, updated, updatedThreads);
     }
 
     static List<String> customKeywords(Context context) {
@@ -110,18 +129,20 @@ final class SpamFilter {
     }
 
     static Matcher matcher(Context context) {
-        return new Matcher(context.getApplicationContext(), senders(context), keywords(context));
+        return new Matcher(context.getApplicationContext(), senders(context), threads(context), keywords(context));
     }
 
     static final class Matcher {
         private final Context context;
         private final Set<String> senders;
+        private final Set<String> threads;
         private final Set<String> keywords;
         private final Map<String, Boolean> savedContacts = new HashMap<>();
 
-        private Matcher(Context context, Set<String> senders, Set<String> keywords) {
+        private Matcher(Context context, Set<String> senders, Set<String> threads, Set<String> keywords) {
             this.context = context;
             this.senders = senders;
+            this.threads = threads;
             this.keywords = keywords;
         }
 
@@ -130,10 +151,15 @@ final class SpamFilter {
         }
 
         boolean isMarkedSpam(String address) {
+            return isMarkedSpam(address, "");
+        }
+
+        boolean isMarkedSpam(String address, String threadId) {
             String key = key(address);
-            return !TextUtils.isEmpty(key)
+            return threads.contains(cleanThreadId(threadId))
+                    || (!TextUtils.isEmpty(key)
                     && (senders.contains(key)
-                    || AddressUtil.containsMatchingPhoneValue(senders, address, SpamFilter::phoneSenderValue));
+                    || AddressUtil.containsMatchingPhoneValue(senders, address, SpamFilter::phoneSenderValue)));
         }
 
         boolean matchesCustomKeyword(String body) {
@@ -165,6 +191,10 @@ final class SpamFilter {
 
     private static String cleanKeyword(String keyword) {
         return TextUtils.isEmpty(keyword) ? "" : keyword.trim().toLowerCase(Locale.US);
+    }
+
+    private static String cleanThreadId(String threadId) {
+        return TextUtils.isEmpty(threadId) ? "" : threadId.trim();
     }
 
     private static String key(String address) {
@@ -212,11 +242,17 @@ final class SpamFilter {
         return cleaned;
     }
 
-    private static void save(Context context, Set<String> senders) {
+    private static Set<String> threads(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        return new HashSet<>(prefs.getStringSet(KEY_THREADS, new HashSet<>()));
+    }
+
+    private static void save(Context context, Set<String> senders, Set<String> threads) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putStringSet(KEY_SENDERS, senders)
-                .apply();
+                .putStringSet(KEY_THREADS, threads)
+                .commit();
     }
 
     private static void saveKeywords(Context context, Set<String> keywords) {

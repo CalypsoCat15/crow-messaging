@@ -97,7 +97,8 @@ final class SmsStore {
                         }
                         String address = cleanAddress(cursor.getString(1));
                         String body = cursor.getString(2);
-                        boolean blockedSender = blockMatcher.isBlocked(address) || spamMatcher.isMarkedSpam(address);
+                        boolean blockedSender = blockMatcher.isBlocked(address)
+                                || spamMatcher.isMarkedSpam(address, threadId);
                         if (shouldHideWholeThread(blockedOnly, blockedSender)) {
                             byThread.remove(threadId);
                             hiddenThreads.add(threadId);
@@ -206,6 +207,7 @@ final class SmsStore {
         List<ChatMessage> messages = loadSmsMessages(
                 context,
                 address,
+                threadId,
                 blockedOnly,
                 Telephony.Sms.THREAD_ID + "=?",
                 new String[] { threadId },
@@ -231,6 +233,7 @@ final class SmsStore {
         List<ChatMessage> messages = loadSmsMessages(
                 context,
                 address,
+                "",
                 blockedOnly,
                 Telephony.Sms.ADDRESS + "=?",
                 new String[] { address },
@@ -254,6 +257,7 @@ final class SmsStore {
             List<ChatMessage> messages = loadSmsMessages(
                     context,
                     address,
+                    threadId,
                     blockedOnly,
                     Telephony.Sms.THREAD_ID + "=?",
                     new String[] { threadId },
@@ -266,6 +270,7 @@ final class SmsStore {
         List<ChatMessage> messages = loadSmsMessages(
                 context,
                 address,
+                "",
                 blockedOnly,
                 Telephony.Sms.ADDRESS + "=?",
                 new String[] { address },
@@ -279,6 +284,7 @@ final class SmsStore {
     private static List<ChatMessage> loadSmsMessages(
             Context context,
             String address,
+            String threadId,
             boolean blockedOnly,
             String selection,
             String[] selectionArgs,
@@ -300,7 +306,8 @@ final class SmsStore {
             while (cursor.moveToNext()) {
                 int type = cursor.getInt(2);
                 String body = cursor.getString(0);
-                boolean blockedSender = blockMatcher.isBlocked(address) || spamMatcher.isMarkedSpam(address);
+                boolean blockedSender = blockMatcher.isBlocked(address)
+                        || spamMatcher.isMarkedSpam(address, threadId);
                 boolean keywordSpam = !isOutgoingSms(type)
                         && spamMatcher.matchesKeywordForUnknownSender(address, body);
                 if (!shouldShowMessage(blockedOnly, blockedSender, keywordSpam)) {

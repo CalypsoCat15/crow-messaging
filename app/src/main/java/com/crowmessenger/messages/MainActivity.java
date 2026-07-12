@@ -3204,15 +3204,22 @@ public class MainActivity extends Activity {
     }
 
     private void markConversationSpam(Conversation conversation) {
-        SpamFilter.markSpam(this, conversation.address);
+        SpamFilter.markSpam(this, conversation.address, conversation.threadId);
         discardCachedInboxScreen();
+        searchQuery = "";
+        showingBlocked = true;
+        inboxRowsCache.put(
+                inboxCacheKey(true, ""),
+                new ArrayList<>(java.util.Collections.singletonList(conversation))
+        );
+        blockedInboxLoadedAtMillis = 0L;
         Toast.makeText(this, "Moved to Spam & blocked.", Toast.LENGTH_SHORT).show();
         activeConversation = null;
         showInbox();
     }
 
     private void unmarkConversationSpam(Conversation conversation) {
-        SpamFilter.unmarkSpam(this, conversation.address);
+        SpamFilter.unmarkSpam(this, conversation.address, conversation.threadId);
         discardCachedInboxScreen();
         Toast.makeText(this, "Moved back to normal inbox.", Toast.LENGTH_SHORT).show();
         activeConversation = null;
