@@ -88,4 +88,23 @@ public class BlocklistTest {
                 prefs.getStringSet("numbers", new HashSet<>())
         );
     }
+
+    @Test
+    public void block_matchesAlphabeticSenderIdsIgnoringCase() {
+        Blocklist.block(context, "Crow Alerts");
+
+        assertTrue(Blocklist.isBlocked(context, "CROW ALERTS"));
+        assertFalse(Blocklist.isBlocked(context, "Crow Support"));
+
+        Blocklist.unblock(context, "crow alerts");
+        assertFalse(Blocklist.isBlocked(context, "Crow Alerts"));
+    }
+
+    @Test
+    public void alphanumericSenderId_doesNotBlockItsDigitsAsAPhoneNumber() {
+        Blocklist.block(context, "ACME2FA");
+
+        assertTrue(Blocklist.isBlocked(context, "acme2fa"));
+        assertFalse(Blocklist.isBlocked(context, "2"));
+    }
 }
