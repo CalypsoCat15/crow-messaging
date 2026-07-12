@@ -299,6 +299,24 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void searchExcerpt_keepsLateMatchVisibleInLongPreview() {
+        String message = "Their primary job is maintaining the ranch, venue, cabins, food, and every other detail, "
+                + "which is enough to keep anyone busy during the summer season.";
+
+        String excerpt = MainActivity.searchExcerpt(message, "busy", 72);
+
+        assertTrue(excerpt.toLowerCase(java.util.Locale.US).contains("busy"));
+        assertTrue(excerpt.startsWith("..."));
+        assertTrue(excerpt.length() <= 78);
+    }
+
+    @Test
+    public void searchExcerpt_keepsShortPreviewUnchanged() {
+        assertEquals("I am busy today", MainActivity.searchExcerpt("I am busy today", "busy", 72));
+        assertEquals("Newest unrelated message", MainActivity.searchExcerpt("Newest unrelated message", "busy", 72));
+    }
+
+    @Test
     public void keyboardContentBottomPadding_compactsOnlyWhileKeyboardIsVisible() {
         assertEquals(6, MainActivity.keyboardContentBottomPadding(true, 20, 6));
         assertEquals(20, MainActivity.keyboardContentBottomPadding(false, 20, 6));

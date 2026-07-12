@@ -1700,15 +1700,18 @@ public class MainActivity extends Activity {
 
         String draft = DraftStore.draft(this, conversation.address);
         boolean hasDraft = !TextUtils.isEmpty(draft);
+        String snippetText = hasDraft
+                ? "Draft: " + draft
+                : searchExcerpt(conversation.snippet, searchQuery, 110);
         int snippetColor = hasDraft ? MINT : (conversation.unreadCount > 0 ? TEXT : MUTED);
         TextView snippet = text(
-                hasDraft ? "Draft: " + draft : conversation.snippet,
+                snippetText,
                 TextSizePrefs.inboxPreviewSp(this),
                 snippetColor,
                 Typeface.NORMAL
         );
         if (!hasDraft && !TextUtils.isEmpty(searchQuery)) {
-            snippet.setText(highlightSearchMatch(conversation.snippet, searchQuery.trim()));
+            snippet.setText(highlightSearchMatch(snippetText, searchQuery.trim()));
         }
         snippet.setSingleLine(true);
         snippet.setEllipsize(TextUtils.TruncateAt.END);
@@ -3103,6 +3106,31 @@ public class MainActivity extends Activity {
             start = lowerBody.indexOf(lowerQuery, end);
         }
         return highlighted;
+    }
+
+    static String searchExcerpt(String text, String query, int maximumCharacters) {
+        if (TextUtils.isEmpty(text) || TextUtils.isEmpty(query) || maximumCharacters <= 0) {
+            return TextUtils.isEmpty(text) ? "" : text;
+        }
+        String needle = query.trim();
+        if (TextUtils.isEmpty(needle) || text.length() <= maximumCharacters) {
+            return text;
+        }
+        int matchStart = text.toLowerCase(Locale.getDefault())
+                .indexOf(needle.toLowerCase(Locale.getDefault()));
+        if (matchStart < 0) {
+            return text;
+        }
+        int before = Math.max(12, maximumCharacters / 3);
+        int start = Math.max(0, matchStart - before);
+        int end = Math.min(text.length(), start + maximumCharacters);
+        int matchEnd = matchStart + needle.length();
+        if (matchEnd > end) {
+            end = Math.min(text.length(), matchEnd + before);
+            start = Math.max(0, end - maximumCharacters);
+        }
+        String excerpt = text.substring(start, end).trim();
+        return (start > 0 ? "..." : "") + excerpt + (end < text.length() ? "..." : "");
     }
 
     private View searchStatusRow(String query, int count) {
