@@ -318,6 +318,19 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void rowsWithConversationRead_clearsOnlyMatchingUnreadConversation() {
+        java.util.List<Conversation> rows = new java.util.ArrayList<>();
+        rows.add(new Conversation("1", "+1 (555) 123-4567", "Fabletics", "Sale", 2000L, 3));
+        rows.add(new Conversation("2", "15557654321", "Dave", "Hello", 1000L, 2));
+
+        java.util.List<Conversation> updated = MainActivity.rowsWithConversationRead(rows, "15551234567");
+
+        assertEquals(0, updated.get(0).unreadCount);
+        assertEquals(2, updated.get(1).unreadCount);
+        assertEquals(3, rows.get(0).unreadCount);
+    }
+
+    @Test
     public void startupMaintenance_allowsOnlyOneWorkerAtATime() {
         assertTrue(MainActivity.beginStartupMaintenance());
         try {

@@ -907,6 +907,19 @@ final class SmsStore {
         SMS_SEARCH_INDEX_READY = true;
     }
 
+    static void markSearchIndexRead(String address) {
+        if (TextUtils.isEmpty(address) || !SMS_SEARCH_INDEX_READY) {
+            return;
+        }
+        ArrayList<SearchThread> updated = new ArrayList<>();
+        for (SearchThread indexed : SMS_SEARCH_INDEX) {
+            updated.add(AddressUtil.sameConversationAddress(indexed.address, address)
+                    ? indexed.withUnreadCount(0)
+                    : indexed);
+        }
+        SMS_SEARCH_INDEX = Collections.unmodifiableList(updated);
+    }
+
     static final class SearchSelection {
         final String selection;
         final String[] args;
@@ -938,6 +951,33 @@ final class SmsStore {
         boolean matches(String query) {
             return TextUtils.isEmpty(query)
                     || searchableText.contains(query.trim().toLowerCase(Locale.getDefault()));
+        }
+
+        SearchThread withUnreadCount(int unreadCount) {
+            return new SearchThread(
+                    threadId,
+                    address,
+                    snippet,
+                    dateMillis,
+                    Math.max(0, unreadCount),
+                    searchableText
+            );
+        }
+
+        private SearchThread(
+                String threadId,
+                String address,
+                String snippet,
+                long dateMillis,
+                int unreadCount,
+                String searchableText
+        ) {
+            this.threadId = threadId;
+            this.address = address;
+            this.snippet = snippet;
+            this.dateMillis = dateMillis;
+            this.unreadCount = unreadCount;
+            this.searchableText = searchableText;
         }
     }
 

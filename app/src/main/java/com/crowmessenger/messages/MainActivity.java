@@ -2131,20 +2131,59 @@ public class MainActivity extends Activity {
         }
         String threadId = conversation.threadId;
         String address = conversation.address;
+        clearConversationUnreadImmediately(address);
         Context appContext = getApplicationContext();
         stateWriter.submit(() -> {
             SmsStore.markConversationRead(appContext, threadId, address);
-            MessageNotifier.clearIncomingForAddress(appContext, address);
             runOnUiThread(() -> {
                 if (isDestroyed()) {
                     return;
                 }
-                invalidateInboxPresentationCache();
                 if (screenMode == ScreenMode.INBOX && activityResumed) {
                     refreshInboxList(true);
                 }
             });
         });
+    }
+
+    private void clearConversationUnreadImmediately(String address) {
+        if (TextUtils.isEmpty(address)) {
+            return;
+        }
+        for (java.util.Map.Entry<String, List<Conversation>> entry : inboxRowsCache.snapshot().entrySet()) {
+            inboxRowsCache.put(entry.getKey(), rowsWithConversationRead(entry.getValue(), address));
+        }
+        List<Conversation> savedRows = InboxSnapshotStore.load(this);
+        if (!savedRows.isEmpty()) {
+            InboxSnapshotStore.save(this, rowsWithConversationRead(savedRows, address));
+        }
+        SmsStore.markSearchIndexRead(address);
+        MessageNotifier.clearIncomingForAddress(this, address);
+    }
+
+    static List<Conversation> rowsWithConversationRead(List<Conversation> rows, String address) {
+        ArrayList<Conversation> updated = new ArrayList<>();
+        if (rows == null) {
+            return updated;
+        }
+        for (Conversation conversation : rows) {
+            if (conversation == null
+                    || conversation.unreadCount == 0
+                    || !AddressUtil.sameConversationAddress(conversation.address, address)) {
+                updated.add(conversation);
+                continue;
+            }
+            updated.add(new Conversation(
+                    conversation.threadId,
+                    conversation.address,
+                    conversation.name,
+                    conversation.photoUri,
+                    conversation.snippet,
+                    conversation.dateMillis,
+                    0
+            ));
+        }
+        return updated;
     }
 
     private void markAllMessagesRead() {
