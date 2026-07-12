@@ -172,7 +172,6 @@ public class MainActivity extends Activity {
     private LinearLayout cachedInboxList;
     private boolean cachedInboxBlocked;
     private String cachedInboxQuery = "";
-    private SearchFilter cachedInboxFilter = SearchFilter.ALL;
     private String renderedInboxCacheKey = "";
     private LinearLayout cachedChatRoot;
     private LinearLayout cachedChatMessagesList;
@@ -195,7 +194,6 @@ public class MainActivity extends Activity {
     private boolean pendingPickImageForCompose;
     private boolean scrollThreadToBottomOnResume;
     private String searchQuery = "";
-    private SearchFilter searchFilter = SearchFilter.ALL;
     private String threadSearchQuery = "";
     private ScreenMode pictureReturnScreen = ScreenMode.CHAT;
     private String composeDraft = "";
@@ -503,13 +501,8 @@ public class MainActivity extends Activity {
             header.addView(status);
         }
 
-        LinearLayout searchRow = new LinearLayout(this);
-        searchRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams searchRowParams = new LinearLayout.LayoutParams(-1, dp(42));
-        searchRowParams.topMargin = dp(8);
-
         EditText search = new EditText(this);
-        search.setHint(searchHint(searchFilter));
+        search.setHint("Search");
         search.setText(searchQuery);
         search.setSingleLine(true);
         search.setTextSize(15);
@@ -517,7 +510,8 @@ public class MainActivity extends Activity {
         search.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_search_muted, 0, 0, 0);
         search.setCompoundDrawablePadding(dp(8));
         search.setBackgroundResource(R.drawable.composer_background);
-        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(0, dp(42), 1);
+        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(42));
+        searchParams.topMargin = dp(8);
         search.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -534,24 +528,7 @@ public class MainActivity extends Activity {
             public void afterTextChanged(Editable s) {
             }
         });
-        searchRow.addView(search, searchParams);
-
-        Button filter = new Button(this);
-        filter.setText(searchFilter.label);
-        filter.setAllCaps(false);
-        filter.setTextSize(12);
-        filter.setTextColor(BLACK);
-        filter.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        filter.setSingleLine(true);
-        filter.setMinWidth(0);
-        filter.setPadding(dp(8), 0, dp(8), 0);
-        filter.setBackground(primaryGradientBackground(18));
-        filter.setContentDescription("Search filter: " + searchFilter.label);
-        setFeedbackClickListener(filter, v -> showSearchFilterMenu());
-        LinearLayout.LayoutParams filterParams = new LinearLayout.LayoutParams(dp(92), dp(38));
-        filterParams.leftMargin = dp(8);
-        searchRow.addView(filter, filterParams);
-        header.addView(searchRow, searchRowParams);
+        header.addView(search, searchParams);
 
         FrameLayout content = new FrameLayout(this);
         content.setBackgroundColor(BLACK);
@@ -568,7 +545,6 @@ public class MainActivity extends Activity {
         cachedInboxList = inboxList;
         cachedInboxBlocked = showingBlocked;
         cachedInboxQuery = searchQuery;
-        cachedInboxFilter = searchFilter;
 
         if (!showingBlocked) {
             Button compose = new Button(this);
@@ -1231,11 +1207,10 @@ public class MainActivity extends Activity {
         }
         boolean blocked = showingBlocked;
         String query = searchQuery;
-        SearchFilter filter = searchFilter;
-        String cacheKey = inboxCacheKey(blocked, query, filter);
+        String cacheKey = inboxCacheKey(blocked, query);
         if (inboxList.getChildCount() == 0) {
             List<Conversation> cachedRows = inboxRowsCache.get(cacheKey);
-            if (cachedRows == null && !blocked && TextUtils.isEmpty(query) && filter == SearchFilter.ALL) {
+            if (cachedRows == null && !blocked && TextUtils.isEmpty(query)) {
                 cachedRows = InboxSnapshotStore.load(this);
                 TrashStore.removeHiddenOrRestoreNew(this, cachedRows);
                 if (!cachedRows.isEmpty()) {
@@ -1252,7 +1227,6 @@ public class MainActivity extends Activity {
         long lastLoadedAt = blocked ? blockedInboxLoadedAtMillis : normalInboxLoadedAtMillis;
         if (!force
                 && TextUtils.isEmpty(query)
-                && filter == SearchFilter.ALL
                 && inboxRowsCache.get(cacheKey) != null
                 && System.currentTimeMillis() - lastLoadedAt < INBOX_REFRESH_THROTTLE_MILLIS) {
             return;
@@ -1261,11 +1235,11 @@ public class MainActivity extends Activity {
         Context appContext = getApplicationContext();
         cancelTask(inboxLoadTask);
         inboxLoadTask = inboxLoader.submit(() -> {
-            List<Conversation> conversations = SmsStore.loadConversations(appContext, blocked, query, filter);
+            List<Conversation> conversations = SmsStore.loadConversations(appContext, blocked, query);
             if (Thread.currentThread().isInterrupted()) {
                 return;
             }
-            if (!blocked && TextUtils.isEmpty(query) && filter == SearchFilter.ALL) {
+            if (!blocked && TextUtils.isEmpty(query)) {
                 InboxSnapshotStore.save(appContext, conversations);
             }
             runOnUiThread(() -> {
@@ -1295,7 +1269,6 @@ public class MainActivity extends Activity {
                 || TextUtils.isEmpty(body)
                 || showingBlocked
                 || !TextUtils.isEmpty(searchQuery)
-                || searchFilter != SearchFilter.ALL
                 || MessageNotifier.shouldSuppressIncoming(this, address, "", body)) {
             return;
         }
@@ -1466,37 +1439,6 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void showSearchFilterMenu() {
-        ArrayList<String> options = new ArrayList<>();
-        for (SearchFilter filter : SearchFilter.values()) {
-            options.add(filter == searchFilter ? filter.label + " (selected)" : filter.label);
-        }
-        showCrowMenu("Search by", options, choice -> {
-            String selected = choice.replace(" (selected)", "");
-            for (SearchFilter filter : SearchFilter.values()) {
-                if (filter.label.equals(selected)) {
-                    searchFilter = filter;
-                    discardCachedInboxScreen();
-                    showInbox();
-                    return;
-                }
-            }
-        });
-    }
-
-    static String searchHint(SearchFilter filter) {
-        if (filter == SearchFilter.PEOPLE) {
-            return "Search people";
-        }
-        if (filter == SearchFilter.MESSAGE_TEXT) {
-            return "Search message text";
-        }
-        if (filter == SearchFilter.PICTURES) {
-            return "Search pictures";
-        }
-        return "Search";
-    }
-
     private void prefetchVisibleThreads(List<Conversation> conversations, boolean blockedOnly) {
         if (conversations == null || conversations.isEmpty()) {
             return;
@@ -1562,14 +1504,8 @@ public class MainActivity extends Activity {
     }
 
     static String inboxCacheKey(boolean blocked, String query) {
-        return inboxCacheKey(blocked, query, SearchFilter.ALL);
-    }
-
-    static String inboxCacheKey(boolean blocked, String query, SearchFilter filter) {
         String safeQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
-        SearchFilter safeFilter = filter == null ? SearchFilter.ALL : filter;
-        String filterKey = safeFilter == SearchFilter.ALL ? "" : safeFilter.name() + "|";
-        return (blocked ? "blocked" : "inbox") + "|" + filterKey + safeQuery;
+        return (blocked ? "blocked" : "inbox") + "|" + safeQuery;
     }
 
     static boolean sameConversationRows(List<Conversation> first, List<Conversation> second) {
@@ -1603,8 +1539,7 @@ public class MainActivity extends Activity {
         return cachedInboxRoot != null
                 && cachedInboxList != null
                 && cachedInboxBlocked == showingBlocked
-                && TextUtils.equals(cachedInboxQuery, searchQuery)
-                && cachedInboxFilter == searchFilter;
+                && TextUtils.equals(cachedInboxQuery, searchQuery);
     }
 
     private void invalidateInboxPresentationCache() {

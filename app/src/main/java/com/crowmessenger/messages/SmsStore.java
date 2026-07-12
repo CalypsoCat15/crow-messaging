@@ -40,11 +40,6 @@ final class SmsStore {
     }
 
     static List<Conversation> loadConversations(Context context, boolean blockedOnly, String query) {
-        return loadConversations(context, blockedOnly, query, SearchFilter.ALL);
-    }
-
-    static List<Conversation> loadConversations(Context context, boolean blockedOnly, String query, SearchFilter filter) {
-        SearchFilter activeFilter = filter == null ? SearchFilter.ALL : filter;
         Map<String, ConversationBuilder> byThread = new HashMap<>();
         Set<String> hiddenThreads = new HashSet<>();
         ContentResolver resolver = context.getContentResolver();
@@ -85,7 +80,7 @@ final class SmsStore {
                     if (!shouldShowMessage(blockedOnly, blockedSender, keywordSpam)) {
                         continue;
                     }
-                    if (!matchesQuery(context, address, body, query, activeFilter, false)) {
+                    if (!matchesQuery(context, address, body, query)) {
                         continue;
                     }
                     long date = cursor.getLong(3);
@@ -120,16 +115,16 @@ final class SmsStore {
                     builder.unreadCount
             ));
         }
-        for (Conversation localConversation : LocalMmsStore.loadConversations(context, blockedOnly, query, activeFilter)) {
+        for (Conversation localConversation : LocalMmsStore.loadConversations(context, blockedOnly, query)) {
             mergeLocalConversation(conversations, localConversation);
         }
         if (!blockedOnly) {
-            for (Conversation pendingConversation : SmsSender.pendingConversations(context, query, activeFilter)) {
+            for (Conversation pendingConversation : SmsSender.pendingConversations(context, query)) {
                 mergeLocalConversation(conversations, pendingConversation);
             }
         }
         for (DraftStore.Draft draft : DraftStore.drafts(context)) {
-            mergeDraftConversation(context, conversations, draft, blockedOnly, query, activeFilter);
+            mergeDraftConversation(context, conversations, draft, blockedOnly, query);
         }
         TrashStore.removeHiddenOrRestoreNew(context, conversations);
         conversations.sort((left, right) -> {
@@ -332,13 +327,12 @@ final class SmsStore {
             List<Conversation> conversations,
             DraftStore.Draft draft,
             boolean blockedOnly,
-            String query,
-            SearchFilter filter
+            String query
     ) {
         if (draft == null || TextUtils.isEmpty(draft.address) || blockedOnly
                 || Blocklist.isBlocked(context, draft.address)
                 || SpamFilter.isMarkedSpam(context, draft.address)
-                || !matchesQuery(context, draft.address, draft.body, query, filter, false)) {
+                || !matchesQuery(context, draft.address, draft.body, query)) {
             return;
         }
         int existingIndex = conversationIndex(conversations, draft.address);
@@ -797,16 +791,15 @@ final class SmsStore {
         return "";
     }
 
-    private static boolean matchesQuery(
-            Context context,
-            String address,
-            String body,
-            String query,
-            SearchFilter filter,
-            boolean hasPicture
-    ) {
+    private static boolean matchesQuery(Context context, String address, String body, String query) {
+        if (TextUtils.isEmpty(query)) {
+            return true;
+        }
+        String needle = query.toLowerCase(Locale.getDefault());
         String name = displayNameForAddress(context, address);
-        return (filter == null ? SearchFilter.ALL : filter).matches(query, address, name, body, hasPicture);
+        return address.toLowerCase(Locale.getDefault()).contains(needle)
+                || (!TextUtils.isEmpty(name) && name.toLowerCase(Locale.getDefault()).contains(needle))
+                || (!TextUtils.isEmpty(body) && body.toLowerCase(Locale.getDefault()).contains(needle));
     }
 
     private static List<Conversation> sampleConversations() {

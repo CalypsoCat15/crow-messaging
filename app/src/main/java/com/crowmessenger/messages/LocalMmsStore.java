@@ -488,19 +488,14 @@ final class LocalMmsStore {
     }
 
     static List<Conversation> loadConversations(Context context, boolean blockedOnly, String query) {
-        return loadConversations(context, blockedOnly, query, SearchFilter.ALL);
-    }
-
-    static List<Conversation> loadConversations(Context context, boolean blockedOnly, String query, SearchFilter filter) {
         List<ConversationBuilder> builders = new ArrayList<>();
         SharedPreferences prefs = prefs(context);
         for (String id : savedIds(prefs)) {
             String address = prefs.getString(addressKey(id), "");
             String body = prefs.getString(bodyKey(id), PICTURE_MESSAGE);
-            boolean hasPicture = !TextUtils.isEmpty(prefs.getString(imageKey(id), ""));
             String sender = prefs.getString(senderKey(id), "");
             boolean filtered = isFiltered(context, address, sender, body, isOutgoing(prefs, id));
-            if (filtered != blockedOnly || !matchesQuery(context, address, body, query, filter, hasPicture)) {
+            if (filtered != blockedOnly || !matchesQuery(context, address, body, query)) {
                 continue;
             }
             long date = prefs.getLong(dateKey(id), System.currentTimeMillis());
@@ -750,16 +745,15 @@ final class LocalMmsStore {
                 .remove(statusKey(id));
     }
 
-    private static boolean matchesQuery(
-            Context context,
-            String address,
-            String body,
-            String query,
-            SearchFilter filter,
-            boolean hasPicture
-    ) {
+    private static boolean matchesQuery(Context context, String address, String body, String query) {
+        if (TextUtils.isEmpty(query)) {
+            return true;
+        }
+        String needle = query.toLowerCase(Locale.getDefault());
         String name = conversationName(context, address);
-        return (filter == null ? SearchFilter.ALL : filter).matches(query, address, name, body, hasPicture);
+        return address.toLowerCase(Locale.getDefault()).contains(needle)
+                || (!TextUtils.isEmpty(name) && name.toLowerCase(Locale.getDefault()).contains(needle))
+                || (!TextUtils.isEmpty(body) && body.toLowerCase(Locale.getDefault()).contains(needle));
     }
 
     private static boolean looksLikeAttachmentMetadata(String body) {

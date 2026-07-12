@@ -87,16 +87,12 @@ final class SmsSender {
     }
 
     static ArrayList<Conversation> pendingConversations(Context context, String query) {
-        return pendingConversations(context, query, SearchFilter.ALL);
-    }
-
-    static ArrayList<Conversation> pendingConversations(Context context, String query, SearchFilter filter) {
         ArrayList<Conversation> conversations = new ArrayList<>();
         for (String sendId : pendingSendIds(context, KEY_ADDRESS_SUFFIX)) {
             PendingSend pending = pending(context, sendId);
             if (pending == null
                     || !TextUtils.isEmpty(pending.scheduledId)
-                    || !matchesPendingQuery(context, pending, query, filter)
+                    || !matchesPendingQuery(context, pending, query)
                     || Blocklist.isBlocked(context, pending.address)
                     || SpamFilter.isMarkedSpam(context, pending.address)) {
                 continue;
@@ -118,14 +114,14 @@ final class SmsSender {
         return TextUtils.isEmpty(pending.status) ? pending.body : pending.status + ": " + pending.body;
     }
 
-    private static boolean matchesPendingQuery(Context context, PendingSend pending, String query, SearchFilter filter) {
-        return (filter == null ? SearchFilter.ALL : filter).matches(
-                query,
-                pending.address,
-                SmsStore.displayNameForAddress(context, pending.address),
-                pending.body + " " + pending.status,
-                false
-        );
+    private static boolean matchesPendingQuery(Context context, PendingSend pending, String query) {
+        if (TextUtils.isEmpty(query)) {
+            return true;
+        }
+        String lower = query.toLowerCase(Locale.getDefault());
+        String searchable = pending.body + " " + pending.status + " " + pending.address + " "
+                + SmsStore.displayNameForAddress(context, pending.address);
+        return searchable.toLowerCase(Locale.getDefault()).contains(lower);
     }
 
     static void cleanupStalePendingSends(Context context) {
