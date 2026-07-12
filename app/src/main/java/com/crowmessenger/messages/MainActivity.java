@@ -5250,7 +5250,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         activityResumed = true;
-        ContactLookup.clearCache();
+        SmsStore.clearContactCaches();
         boolean skipRefresh = shouldSkipInitialRefresh(firstResume, pendingMessageRefresh);
         firstResume = false;
         if (skipRefresh) {

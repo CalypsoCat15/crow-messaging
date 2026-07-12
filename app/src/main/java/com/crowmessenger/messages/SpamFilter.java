@@ -7,8 +7,10 @@ import android.text.TextUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 final class SpamFilter {
@@ -115,6 +117,7 @@ final class SpamFilter {
         private final Context context;
         private final Set<String> senders;
         private final Set<String> keywords;
+        private final Map<String, Boolean> savedContacts = new HashMap<>();
 
         private Matcher(Context context, Set<String> senders, Set<String> keywords) {
             this.context = context;
@@ -147,7 +150,16 @@ final class SpamFilter {
         }
 
         boolean matchesKeywordForUnknownSender(String address, String body) {
-            return matchesCustomKeyword(body) && !ContactLookup.isSavedContact(context, address);
+            if (!matchesCustomKeyword(body)) {
+                return false;
+            }
+            String key = AddressUtil.stableKey(address);
+            Boolean saved = savedContacts.get(key);
+            if (saved == null) {
+                saved = ContactLookup.isSavedContact(context, address);
+                savedContacts.put(key, saved);
+            }
+            return !saved;
         }
     }
 

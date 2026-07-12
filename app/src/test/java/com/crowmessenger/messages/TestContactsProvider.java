@@ -14,6 +14,7 @@ import java.util.Map;
 
 final class TestContactsProvider extends ContentProvider {
     private static final Map<String, String> NAMES_BY_NUMBER = new HashMap<>();
+    private static int queryCount;
 
     static void install() {
         ShadowContentResolver.registerProviderInternal("com.android.contacts", new TestContactsProvider());
@@ -21,12 +22,21 @@ final class TestContactsProvider extends ContentProvider {
 
     static void clear() {
         NAMES_BY_NUMBER.clear();
+        queryCount = 0;
         ContactLookup.clearCache();
     }
 
     static void add(String number, String name) {
         NAMES_BY_NUMBER.put(number, name);
         ContactLookup.clearCache();
+    }
+
+    static void addWithoutClearingCache(String number, String name) {
+        NAMES_BY_NUMBER.put(number, name);
+    }
+
+    static int queryCount() {
+        return queryCount;
     }
 
     @Override
@@ -36,6 +46,7 @@ final class TestContactsProvider extends ContentProvider {
 
     @Override
     public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
+        queryCount++;
         String number = uri == null ? "" : Uri.decode(uri.getLastPathSegment());
         String name = NAMES_BY_NUMBER.get(number);
         String[] columns = projection == null

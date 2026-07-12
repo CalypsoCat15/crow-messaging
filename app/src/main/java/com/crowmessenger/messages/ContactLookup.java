@@ -26,7 +26,11 @@ final class ContactLookup {
             return cached;
         }
         boolean saved = querySavedContact(context, address);
-        SAVED_CONTACT_CACHE.put(key, saved);
+        if (saved) {
+            SAVED_CONTACT_CACHE.put(key, true);
+        } else {
+            SAVED_CONTACT_CACHE.remove(key);
+        }
         return saved;
     }
 

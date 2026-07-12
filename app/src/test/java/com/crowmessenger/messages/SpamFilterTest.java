@@ -124,6 +124,28 @@ public class SpamFilterTest {
     }
 
     @Test
+    public void newlySavedContactIsRecognizedAfterEarlierUnknownLookup() {
+        SpamFilter.addCustomKeywords(context, "donate");
+        String address = "15551234567";
+
+        assertTrue(SpamFilter.matchesKeywordForUnknownSender(context, address, "Please donate"));
+        TestContactsProvider.addWithoutClearingCache(address, "Dad");
+
+        assertFalse(SpamFilter.matchesKeywordForUnknownSender(context, address, "Did you donate?"));
+    }
+
+    @Test
+    public void matcherQueriesEachUnknownKeywordSenderOnlyOncePerScan() {
+        SpamFilter.addCustomKeywords(context, "donate");
+        SpamFilter.Matcher matcher = SpamFilter.matcher(context);
+
+        assertTrue(matcher.matchesKeywordForUnknownSender("15557654321", "Please donate"));
+        assertTrue(matcher.matchesKeywordForUnknownSender("15557654321", "Donate today"));
+
+        assertEquals(1, TestContactsProvider.queryCount());
+    }
+
+    @Test
     public void manuallyMarkedSpamStillOverridesSavedContact() {
         SpamFilter.addCustomKeywords(context, "donate");
         TestContactsProvider.add("15551234567", "Dad");
