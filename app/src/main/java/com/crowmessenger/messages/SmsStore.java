@@ -592,13 +592,12 @@ final class SmsStore {
         if (TextUtils.isEmpty(threadId)) {
             return;
         }
-        ContentValues values = new ContentValues();
-        values.put(Telephony.Sms.READ, 1);
+        ContentValues values = smsReadValues();
         try {
             context.getContentResolver().update(
                     SMS_URI,
                     values,
-                    Telephony.Sms.THREAD_ID + "=? AND " + Telephony.Sms.READ + "=0",
+                    Telephony.Sms.THREAD_ID + "=? AND (" + Telephony.Sms.READ + "=0 OR " + Telephony.Sms.SEEN + "=0)",
                     new String[] { threadId }
             );
         } catch (SecurityException | IllegalArgumentException ignored) {
@@ -609,34 +608,70 @@ final class SmsStore {
         markConversationRead(context, findThreadIdForAddress(context, address), address);
     }
 
+    private static void markMmsThreadRead(Context context, String threadId) {
+        if (TextUtils.isEmpty(threadId)) {
+            return;
+        }
+        ContentValues values = new ContentValues();
+        values.put("read", 1);
+        values.put("seen", 1);
+        try {
+            context.getContentResolver().update(
+                    MMS_URI,
+                    values,
+                    "thread_id=? AND (read=0 OR seen=0)",
+                    new String[] { threadId }
+            );
+        } catch (SecurityException | IllegalArgumentException ignored) {
+        }
+    }
+
     static void markConversationRead(Context context, String threadId, String address) {
         if (!TextUtils.isEmpty(threadId)) {
             markThreadRead(context, threadId);
-        } else {
-            markSmsAddressRead(context, address);
+            markMmsThreadRead(context, threadId);
         }
+        markSmsAddressRead(context, address);
         LocalMmsStore.markAddressRead(context, address);
     }
 
+    static boolean markConversationReadVerified(Context context, String threadId, String address) {
+        for (int attempt = 0; attempt < 3; attempt++) {
+            markConversationRead(context, threadId, address);
+            if (!hasUnreadSmsForAddress(context, address)) {
+                return true;
+            }
+            if (attempt < 2) {
+                try {
+                    Thread.sleep(100L);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+        }
+        return !hasUnreadSmsForAddress(context, address);
+    }
+
     static void markAllRead(Context context) {
-        ContentValues values = new ContentValues();
-        values.put(Telephony.Sms.READ, 1);
+        ContentValues values = smsReadValues();
         try {
             context.getContentResolver().update(
                     SMS_URI,
                     values,
-                    Telephony.Sms.READ + "=0",
+                    Telephony.Sms.READ + "=0 OR " + Telephony.Sms.SEEN + "=0",
                     null
             );
         } catch (SecurityException | IllegalArgumentException ignored) {
         }
         ContentValues mmsValues = new ContentValues();
         mmsValues.put("read", 1);
+        mmsValues.put("seen", 1);
         try {
             context.getContentResolver().update(
                     MMS_URI,
                     mmsValues,
-                    "read=0",
+                    "read=0 OR seen=0",
                     null
             );
         } catch (SecurityException | IllegalArgumentException ignored) {
@@ -761,13 +796,24 @@ final class SmsStore {
     }
 
     private static void markSmsAddressRead(Context context, String address) {
+        if (TextUtils.isEmpty(address)) {
+            return;
+        }
+        ContentResolver resolver = context.getContentResolver();
+        ContentValues values = smsReadValues();
+        try {
+            resolver.update(
+                    SMS_URI,
+                    values,
+                    Telephony.Sms.ADDRESS + "=? AND (" + Telephony.Sms.READ + "=0 OR " + Telephony.Sms.SEEN + "=0)",
+                    new String[] { cleanAddress(address) }
+            );
+        } catch (SecurityException | IllegalArgumentException ignored) {
+        }
         List<String> ids = recentSmsIdsForMatchingAddress(context, address, true);
         if (ids.isEmpty()) {
             return;
         }
-        ContentValues values = new ContentValues();
-        values.put(Telephony.Sms.READ, 1);
-        ContentResolver resolver = context.getContentResolver();
         for (String id : ids) {
             try {
                 resolver.update(SMS_URI, values, Telephony.Sms._ID + "=?", new String[] { id });
@@ -782,7 +828,9 @@ final class SmsStore {
         if (TextUtils.isEmpty(target)) {
             return Collections.emptyList();
         }
-        String selection = unreadOnly ? Telephony.Sms.READ + "=0" : null;
+        String selection = unreadOnly
+                ? "(" + Telephony.Sms.READ + "=0 OR " + Telephony.Sms.SEEN + "=0)"
+                : null;
         List<String> ids = new ArrayList<>();
         try (Cursor cursor = context.getContentResolver().query(
                 SMS_URI,
@@ -802,6 +850,10 @@ final class SmsStore {
             return ids;
         }
         return ids;
+    }
+
+    private static boolean hasUnreadSmsForAddress(Context context, String address) {
+        return !recentSmsIdsForMatchingAddress(context, address, true).isEmpty();
     }
 
     private static String findAddressForThread(Context context, String threadId) {
@@ -928,6 +980,13 @@ final class SmsStore {
             this.selection = selection;
             this.args = args;
         }
+    }
+
+    static ContentValues smsReadValues() {
+        ContentValues values = new ContentValues();
+        values.put(Telephony.Sms.READ, 1);
+        values.put(Telephony.Sms.SEEN, 1);
+        return values;
     }
 
     static final class SearchThread {

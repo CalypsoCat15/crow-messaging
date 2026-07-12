@@ -2128,7 +2128,7 @@ public class MainActivity extends Activity {
         clearConversationUnreadImmediately(address);
         Context appContext = getApplicationContext();
         stateWriter.submit(() -> {
-            SmsStore.markConversationRead(appContext, threadId, address);
+            SmsStore.markConversationReadVerified(appContext, threadId, address);
             runOnUiThread(() -> {
                 if (isDestroyed()) {
                     return;

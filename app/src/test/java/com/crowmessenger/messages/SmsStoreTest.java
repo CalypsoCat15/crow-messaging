@@ -116,6 +116,24 @@ public class SmsStoreTest {
     }
 
     @Test
+    public void readValues_markMessagesBothReadAndSeen() {
+        android.content.ContentValues values = SmsStore.smsReadValues();
+
+        assertEquals(Integer.valueOf(1), values.getAsInteger(android.provider.Telephony.Sms.READ));
+        assertEquals(Integer.valueOf(1), values.getAsInteger(android.provider.Telephony.Sms.SEEN));
+    }
+
+    @Test
+    public void verifiedRead_fallsBackToShortCodeWhenThreadIdIsStale() {
+        Context context = RuntimeEnvironment.getApplication();
+        TestSmsProvider.install();
+        TestSmsProvider.add("7", "real-thread", "31354", false, false);
+
+        assertTrue(SmsStore.markConversationReadVerified(context, "stale-thread", "31354"));
+        assertTrue(TestSmsProvider.isReadAndSeen("7"));
+    }
+
+    @Test
     public void mergeLocalConversation_addsUnreadCountToExistingSmsThread() {
         List<Conversation> conversations = new ArrayList<>();
         conversations.add(new Conversation(
