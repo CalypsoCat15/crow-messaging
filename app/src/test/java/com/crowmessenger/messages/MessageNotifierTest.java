@@ -86,6 +86,32 @@ public class MessageNotifierTest {
     }
 
     @Test
+    public void failureNotificationIds_areUniqueAndSeparateFromIncomingIds() {
+        int first = MessageNotifier.nextFailureNotificationId(context);
+        int second = MessageNotifier.nextFailureNotificationId(context);
+        int incoming = MessageNotifier.nextIncomingNotificationId(context);
+
+        assertFalse(first == second);
+        assertTrue(first > 0);
+        assertTrue(second > 0);
+        assertTrue(incoming < 0);
+    }
+
+    @Test
+    public void failureNotifications_keepSeparateTapActionsForCollidingSenderIds() {
+        assertEquals(AddressUtil.stableId("send_failed", "Aa"),
+                AddressUtil.stableId("send_failed", "BB"));
+        PendingIntent first = MessageNotifier.failureContentPendingIntent(
+                context, "send_failed", "Aa", 101
+        );
+        PendingIntent second = MessageNotifier.failureContentPendingIntent(
+                context, "send_failed", "BB", 102
+        );
+
+        assertFalse(first.equals(second));
+    }
+
+    @Test
     public void incomingNotifications_keepSeparateTapActionsForTheSameConversation() {
         PendingIntent first = MessageNotifier.incomingContentPendingIntent(
                 context, "15551234567", "First", 100L, -101

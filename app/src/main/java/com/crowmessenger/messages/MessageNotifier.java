@@ -26,6 +26,7 @@ final class MessageNotifier {
     private static final String IDS_PREFIX = "ids_";
     private static final String ADDRESS_PREFIX = "address_";
     private static final String NEXT_INCOMING_ID = "next_incoming_id";
+    private static final String NEXT_FAILURE_ID = "next_failure_id";
 
     private MessageNotifier() {
     }
@@ -85,11 +86,7 @@ final class MessageNotifier {
     }
 
     static synchronized int nextIncomingNotificationId(Context context) {
-        SharedPreferences preferences = prefs(context);
-        long sequence = preferences.getLong(NEXT_INCOMING_ID, 0L) + 1L;
-        preferences.edit().putLong(NEXT_INCOMING_ID, sequence).apply();
-        // Incoming IDs stay negative so they cannot collide with the non-negative failure IDs.
-        return -1 - (int) (sequence % Integer.MAX_VALUE);
+        return nextNotificationId(context, NEXT_INCOMING_ID, true);
     }
 
     static PendingIntent incomingContentPendingIntent(
@@ -195,14 +192,12 @@ final class MessageNotifier {
         }
         ensureChannel(context, manager, address, CHANNEL_ID);
 
-        Intent intent = new Intent(context, MainActivity.class);
-        intent.putExtra(MainActivity.EXTRA_OPEN_ADDRESS, address);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
+        int notificationId = nextFailureNotificationId(context);
+        PendingIntent pendingIntent = failureContentPendingIntent(
                 context,
-                AddressUtil.stableId(keyPrefix, address),
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                keyPrefix,
+                address,
+                notificationId
         );
 
         Notification.Builder builder = new Notification.Builder(context, CHANNEL_ID);
@@ -213,7 +208,37 @@ final class MessageNotifier {
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true);
 
-        manager.notify(AddressUtil.stableId(keyPrefix, address + body), builder.build());
+        manager.notify(notificationId, builder.build());
+    }
+
+    static synchronized int nextFailureNotificationId(Context context) {
+        return nextNotificationId(context, NEXT_FAILURE_ID, false);
+    }
+
+    private static int nextNotificationId(Context context, String sequenceKey, boolean negative) {
+        SharedPreferences preferences = prefs(context);
+        long sequence = preferences.getLong(sequenceKey, 0L) + 1L;
+        preferences.edit().putLong(sequenceKey, sequence).apply();
+        int value = 1 + (int) (sequence % (Integer.MAX_VALUE - 1L));
+        return negative ? -value : value;
+    }
+
+    static PendingIntent failureContentPendingIntent(
+            Context context,
+            String failureType,
+            String address,
+            int notificationId
+    ) {
+        Intent intent = new Intent(context, MainActivity.class)
+                .setData(Uri.parse("crow-failure://" + Uri.encode(failureType) + "/" + Uri.encode(address)))
+                .putExtra(MainActivity.EXTRA_OPEN_ADDRESS, address)
+                .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        return PendingIntent.getActivity(
+                context,
+                notificationId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
     }
 
     static synchronized void clearIncomingForAddress(Context context, String address) {
