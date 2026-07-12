@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -76,10 +77,24 @@ public class MessageNotifierTest {
 
     @Test
     public void incomingNotificationIds_areUniqueForIdenticalMessages() {
-        int first = MessageNotifier.nextIncomingNotificationId(context, "15551234567");
-        int second = MessageNotifier.nextIncomingNotificationId(context, "15551234567");
+        int first = MessageNotifier.nextIncomingNotificationId(context);
+        int second = MessageNotifier.nextIncomingNotificationId(context);
 
         assertFalse(first == second);
+        assertTrue(first < 0);
+        assertTrue(second < 0);
+    }
+
+    @Test
+    public void incomingNotifications_keepSeparateTapActionsForTheSameConversation() {
+        PendingIntent first = MessageNotifier.incomingContentPendingIntent(
+                context, "15551234567", "First", 100L, -101
+        );
+        PendingIntent second = MessageNotifier.incomingContentPendingIntent(
+                context, "15551234567", "Second", 200L, -102
+        );
+
+        assertFalse(first.equals(second));
     }
 
     @Test

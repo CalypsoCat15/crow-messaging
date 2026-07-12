@@ -59,12 +59,13 @@ final class MessageNotifier {
         ensureChannel(context, manager, address, channelId);
         String notificationBody = notificationBody(context, address, senderAddress, body);
 
-        Intent intent = incomingContentIntent(context, address, body, dateMillis);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
+        int notificationId = nextIncomingNotificationId(context);
+        PendingIntent pendingIntent = incomingContentPendingIntent(
                 context,
-                AddressUtil.stableId(address),
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                address,
+                body,
+                dateMillis,
+                notificationId
         );
 
         Notification.Builder builder = new Notification.Builder(context, channelId);
@@ -78,16 +79,31 @@ final class MessageNotifier {
                 .addAction(replyAction(context, address))
                 .setAutoCancel(true);
 
-        int notificationId = nextIncomingNotificationId(context, address);
         rememberIncomingNotification(context, address, notificationId);
         manager.notify(notificationId, builder.build());
     }
 
-    static synchronized int nextIncomingNotificationId(Context context, String address) {
+    static synchronized int nextIncomingNotificationId(Context context) {
         SharedPreferences preferences = prefs(context);
         long sequence = preferences.getLong(NEXT_INCOMING_ID, 0L) + 1L;
         preferences.edit().putLong(NEXT_INCOMING_ID, sequence).apply();
-        return AddressUtil.stableId("incoming", address + "|" + sequence);
+        // Incoming IDs stay negative so they cannot collide with the non-negative failure IDs.
+        return -1 - (int) (sequence % Integer.MAX_VALUE);
+    }
+
+    static PendingIntent incomingContentPendingIntent(
+            Context context,
+            String address,
+            String body,
+            long dateMillis,
+            int notificationId
+    ) {
+        return PendingIntent.getActivity(
+                context,
+                notificationId,
+                incomingContentIntent(context, address, body, dateMillis),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
     }
 
     static Intent incomingContentIntent(Context context, String address, String body, long dateMillis) {
@@ -199,7 +215,7 @@ final class MessageNotifier {
         manager.notify(AddressUtil.stableId(keyPrefix, address + body), builder.build());
     }
 
-    static void clearIncomingForAddress(Context context, String address) {
+    static synchronized void clearIncomingForAddress(Context context, String address) {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         SharedPreferences prefs = prefs(context);
         String directKey = notificationIdsKey(address);
@@ -213,20 +229,13 @@ final class MessageNotifier {
                 continue;
             }
             Set<String> ids = new HashSet<>(prefs.getStringSet(key, new HashSet<>()));
-            if (manager != null) {
-                for (String id : ids) {
-                    try {
-                        manager.cancel(Integer.parseInt(id));
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            }
+            cancelNotificationIds(manager, ids);
             editor.remove(key).remove(notificationAddressKey(key));
         }
         editor.apply();
     }
 
-    static void clearAllIncoming(Context context) {
+    static synchronized void clearAllIncoming(Context context) {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         SharedPreferences prefs = prefs(context);
         SharedPreferences.Editor editor = prefs.edit();
@@ -235,14 +244,7 @@ final class MessageNotifier {
                 continue;
             }
             Set<String> ids = new HashSet<>(prefs.getStringSet(key, new HashSet<>()));
-            if (manager != null) {
-                for (String id : ids) {
-                    try {
-                        manager.cancel(Integer.parseInt(id));
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            }
+            cancelNotificationIds(manager, ids);
             editor.remove(key).remove(notificationAddressKey(key));
         }
         editor.apply();
@@ -318,7 +320,7 @@ final class MessageNotifier {
         return CONTACT_CHANNEL_PREFIX + AddressUtil.stableId(address) + "_";
     }
 
-    private static void rememberIncomingNotification(Context context, String address, int notificationId) {
+    private static synchronized void rememberIncomingNotification(Context context, String address, int notificationId) {
         SharedPreferences prefs = prefs(context);
         String key = notificationIdsKey(address);
         Set<String> ids = new HashSet<>(prefs.getStringSet(key, new HashSet<>()));
@@ -327,6 +329,18 @@ final class MessageNotifier {
                 .putStringSet(key, ids)
                 .putString(notificationAddressKey(key), address)
                 .apply();
+    }
+
+    private static void cancelNotificationIds(NotificationManager manager, Set<String> ids) {
+        if (manager == null) {
+            return;
+        }
+        for (String id : ids) {
+            try {
+                manager.cancel(Integer.parseInt(id));
+            } catch (NumberFormatException ignored) {
+            }
+        }
     }
 
     private static String notificationIdsKey(String address) {
