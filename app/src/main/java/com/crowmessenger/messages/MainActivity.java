@@ -78,6 +78,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -219,6 +220,7 @@ public class MainActivity extends Activity {
     private final ExecutorService threadPrefetchLoader = newSingleThreadLoader("crow-thread-prefetch");
     private final ExecutorService stateWriter = newSingleThreadLoader("crow-state-writer");
     private final Set<String> threadPrefetches = ConcurrentHashMap.newKeySet();
+    private final Set<String> locallyReadAddresses = ConcurrentHashMap.newKeySet();
     private Future<?> inboxLoadTask;
     private Future<?> threadLoadTask;
     private final Handler draftSaveHandler = new Handler(Looper.getMainLooper());
@@ -240,6 +242,7 @@ public class MainActivity extends Activity {
             String address = intent == null ? "" : intent.getStringExtra(EXTRA_OPEN_ADDRESS);
             String body = intent == null ? "" : intent.getStringExtra(EXTRA_MESSAGE_BODY);
             long dateMillis = intent == null ? 0L : intent.getLongExtra(EXTRA_MESSAGE_DATE, 0L);
+            removeMatchingAddress(locallyReadAddresses, address);
             if (!activityResumed) {
                 rememberPendingIncoming(address, body, dateMillis);
                 return;
@@ -1256,7 +1259,8 @@ public class MainActivity extends Activity {
         Context appContext = getApplicationContext();
         cancelTask(inboxLoadTask);
         inboxLoadTask = inboxLoader.submit(() -> {
-            List<Conversation> conversations = SmsStore.loadConversations(appContext, blocked, query);
+            List<Conversation> loadedConversations = SmsStore.loadConversations(appContext, blocked, query);
+            List<Conversation> conversations = rowsWithConversationsRead(loadedConversations, locallyReadAddresses);
             if (Thread.currentThread().isInterrupted()) {
                 return;
             }
@@ -2150,6 +2154,7 @@ public class MainActivity extends Activity {
         if (TextUtils.isEmpty(address)) {
             return;
         }
+        locallyReadAddresses.add(address);
         for (java.util.Map.Entry<String, List<Conversation>> entry : inboxRowsCache.snapshot().entrySet()) {
             inboxRowsCache.put(entry.getKey(), rowsWithConversationRead(entry.getValue(), address));
         }
@@ -2162,6 +2167,15 @@ public class MainActivity extends Activity {
     }
 
     static List<Conversation> rowsWithConversationRead(List<Conversation> rows, String address) {
+        if (TextUtils.isEmpty(address)) {
+            return rows == null ? new ArrayList<>() : new ArrayList<>(rows);
+        }
+        Set<String> addresses = new HashSet<>();
+        addresses.add(address);
+        return rowsWithConversationsRead(rows, addresses);
+    }
+
+    static List<Conversation> rowsWithConversationsRead(List<Conversation> rows, Set<String> addresses) {
         ArrayList<Conversation> updated = new ArrayList<>();
         if (rows == null) {
             return updated;
@@ -2169,7 +2183,7 @@ public class MainActivity extends Activity {
         for (Conversation conversation : rows) {
             if (conversation == null
                     || conversation.unreadCount == 0
-                    || !AddressUtil.sameConversationAddress(conversation.address, address)) {
+                    || !containsMatchingAddress(addresses, conversation.address)) {
                 updated.add(conversation);
                 continue;
             }
@@ -2184,6 +2198,31 @@ public class MainActivity extends Activity {
             ));
         }
         return updated;
+    }
+
+    static boolean removeMatchingAddress(Set<String> addresses, String address) {
+        if (addresses == null || TextUtils.isEmpty(address)) {
+            return false;
+        }
+        boolean removed = false;
+        for (String stored : new HashSet<>(addresses)) {
+            if (AddressUtil.sameConversationAddress(stored, address)) {
+                removed |= addresses.remove(stored);
+            }
+        }
+        return removed;
+    }
+
+    private static boolean containsMatchingAddress(Set<String> addresses, String address) {
+        if (addresses == null || addresses.isEmpty() || TextUtils.isEmpty(address)) {
+            return false;
+        }
+        for (String stored : addresses) {
+            if (AddressUtil.sameConversationAddress(stored, address)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void markAllMessagesRead() {

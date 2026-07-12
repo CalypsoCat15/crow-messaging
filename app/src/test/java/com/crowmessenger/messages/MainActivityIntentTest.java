@@ -331,6 +331,19 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void localReadOverride_survivesReloadUntilANewMessageArrives() {
+        java.util.Set<String> locallyRead = new java.util.HashSet<>();
+        locallyRead.add("31354");
+        java.util.List<Conversation> reloaded = java.util.List.of(
+                new Conversation("1", "31354", "Fabletics", "Sale", 2000L, 1)
+        );
+
+        assertEquals(0, MainActivity.rowsWithConversationsRead(reloaded, locallyRead).get(0).unreadCount);
+        assertTrue(MainActivity.removeMatchingAddress(locallyRead, "31354"));
+        assertEquals(1, MainActivity.rowsWithConversationsRead(reloaded, locallyRead).get(0).unreadCount);
+    }
+
+    @Test
     public void startupMaintenance_allowsOnlyOneWorkerAtATime() {
         assertTrue(MainActivity.beginStartupMaintenance());
         try {
