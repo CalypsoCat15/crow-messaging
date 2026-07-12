@@ -1712,29 +1712,19 @@ public class MainActivity extends Activity {
         trailing.addView(time);
 
         if (conversation.unreadCount > 0) {
-            TextView unreadBadge = text(unreadBadgeLabel(conversation.unreadCount), 11, BLACK, Typeface.BOLD);
-            unreadBadge.setGravity(Gravity.CENTER);
-            unreadBadge.setMinWidth(dp(20));
-            unreadBadge.setPadding(dp(5), 0, dp(5), 0);
-            unreadBadge.setBackground(primaryGradientBackground(10));
-            unreadBadge.setContentDescription(conversation.unreadCount + " unread messages");
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, dp(20));
+            View unreadDot = new View(this);
+            unreadDot.setBackgroundResource(R.drawable.unread_badge);
+            unreadDot.setContentDescription("Unread messages");
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(10), dp(10));
             params.gravity = Gravity.END;
-            params.topMargin = dp(7);
-            trailing.addView(unreadBadge, params);
+            params.topMargin = dp(10);
+            trailing.addView(unreadDot, params);
         }
         row.setOnLongClickListener(v -> {
             showConversationMenu(conversation);
             return true;
         });
         return row;
-    }
-
-    static String unreadBadgeLabel(int unreadCount) {
-        if (unreadCount <= 0) {
-            return "";
-        }
-        return unreadCount > 99 ? "99+" : String.valueOf(unreadCount);
     }
 
     private View emptyStateView(String title, String subtitle, boolean featureLargeLogo) {
