@@ -45,6 +45,20 @@ public class SmsStoreTest {
     }
 
     @Test
+    public void searchIndex_matchesHistoricalTextNameAndNumberInMemory() {
+        Conversation conversation = new Conversation("7", "15551234567", "Dave", "Newest message", 2000L, 0);
+        SmsStore.SearchThread indexed = new SmsStore.SearchThread(
+                conversation,
+                "Older testing message\nAnother old message"
+        );
+
+        assertTrue(indexed.matches("testing"));
+        assertTrue(indexed.matches("dave"));
+        assertTrue(indexed.matches("1234"));
+        assertFalse(indexed.matches("not present"));
+    }
+
+    @Test
     public void deleteMessage_removesOnlySelectedLocalMmsRecord() {
         Context context = RuntimeEnvironment.getApplication();
         context.getSharedPreferences("local_mms", Context.MODE_PRIVATE).edit().clear().commit();

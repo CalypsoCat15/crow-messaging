@@ -1208,6 +1208,19 @@ public class MainActivity extends Activity {
         boolean blocked = showingBlocked;
         String query = searchQuery;
         String cacheKey = inboxCacheKey(blocked, query);
+        if (TextUtils.isEmpty(query) && !TextUtils.equals(renderedInboxCacheKey, cacheKey)) {
+            List<Conversation> cachedInbox = inboxRowsCache.get(cacheKey);
+            if (cachedInbox == null && !blocked) {
+                cachedInbox = InboxSnapshotStore.load(this);
+                TrashStore.removeHiddenOrRestoreNew(this, cachedInbox);
+                if (!cachedInbox.isEmpty()) {
+                    inboxRowsCache.put(cacheKey, cachedInbox);
+                }
+            }
+            if (cachedInbox != null) {
+                renderInboxRows(cachedInbox, blocked, cacheKey);
+            }
+        }
         if (!TextUtils.isEmpty(query) && !TextUtils.equals(renderedInboxCacheKey, cacheKey)) {
             List<Conversation> cachedSearch = inboxRowsCache.get(cacheKey);
             if (cachedSearch == null) {

@@ -35,6 +35,8 @@ final class SmsStore {
     };
     private static final Map<String, String> CONTACT_NAME_CACHE = new ConcurrentHashMap<>();
     private static final Map<String, String> CONTACT_PHOTO_CACHE = new ConcurrentHashMap<>();
+    private static volatile List<SearchThread> SMS_SEARCH_INDEX = Collections.emptyList();
+    private static volatile boolean SMS_SEARCH_INDEX_READY;
 
     private SmsStore() {
     }
@@ -45,7 +47,10 @@ final class SmsStore {
         ContentResolver resolver = context.getContentResolver();
         Blocklist.Matcher blockMatcher = Blocklist.matcher(context);
         SpamFilter.Matcher spamMatcher = SpamFilter.matcher(context);
-        Set<String> matchingContactAddresses = contactAddressesMatchingQuery(context, query);
+        boolean useSearchIndex = !blockedOnly && !TextUtils.isEmpty(query) && SMS_SEARCH_INDEX_READY;
+        Set<String> matchingContactAddresses = useSearchIndex
+                ? Collections.emptySet()
+                : contactAddressesMatchingQuery(context, query);
         boolean smsUnavailable = false;
         String[] columns = new String[] {
                 Telephony.Sms.THREAD_ID,
@@ -55,56 +60,71 @@ final class SmsStore {
                 Telephony.Sms.READ,
                 Telephony.Sms.TYPE
         };
-        SearchSelection searchSelection = searchSelection(query, matchingContactAddresses);
-
-        try (Cursor cursor = resolver.query(
-                SMS_URI,
-                columns,
-                searchSelection.selection,
-                searchSelection.args,
-                Telephony.Sms.DEFAULT_SORT_ORDER
-        )) {
-            if (cursor == null) {
-                smsUnavailable = true;
-            } else {
-                while (cursor.moveToNext()) {
-                    if (Thread.currentThread().isInterrupted()) {
-                        return Collections.emptyList();
-                    }
-                    String threadId = cursor.getString(0);
-                    if (!blockedOnly && hiddenThreads.contains(threadId)) {
-                        continue;
-                    }
-                    String address = cleanAddress(cursor.getString(1));
-                    String body = cursor.getString(2);
-                    boolean blockedSender = blockMatcher.isBlocked(address) || spamMatcher.isMarkedSpam(address);
-                    if (shouldHideWholeThread(blockedOnly, blockedSender)) {
-                        byThread.remove(threadId);
-                        hiddenThreads.add(threadId);
-                        continue;
-                    }
-                    boolean keywordSpam = !isOutgoingSms(cursor.getInt(5))
-                            && spamMatcher.matchesKeywordForUnknownSender(address, body);
-                    if (!shouldShowMessage(blockedOnly, blockedSender, keywordSpam)) {
-                        continue;
-                    }
-                    if (!matchesQuery(address, body, query, matchingContactAddresses)) {
-                        continue;
-                    }
-                    long date = cursor.getLong(3);
-                    boolean unread = cursor.getInt(4) == 0;
-                    ConversationBuilder builder = byThread.get(threadId);
-                    if (builder == null) {
-                        builder = new ConversationBuilder(threadId, address, body, date);
-                        byThread.put(threadId, builder);
-                    }
-                    if (unread) {
-                        builder.unreadCount++;
-                    }
+        if (useSearchIndex) {
+            for (SearchThread indexed : SMS_SEARCH_INDEX) {
+                if (indexed.matches(query)) {
+                    ConversationBuilder builder = new ConversationBuilder(
+                            indexed.threadId,
+                            indexed.address,
+                            indexed.snippet,
+                            indexed.dateMillis
+                    );
+                    builder.unreadCount = indexed.unreadCount;
+                    byThread.put(indexed.threadId, builder);
                 }
             }
-        } catch (SecurityException | IllegalArgumentException ex) {
-            smsUnavailable = true;
+        } else {
+            SearchSelection searchSelection = searchSelection(query, matchingContactAddresses);
+            try (Cursor cursor = resolver.query(
+                    SMS_URI,
+                    columns,
+                    searchSelection.selection,
+                    searchSelection.args,
+                    Telephony.Sms.DEFAULT_SORT_ORDER
+            )) {
+                if (cursor == null) {
+                    smsUnavailable = true;
+                } else {
+                    while (cursor.moveToNext()) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            return Collections.emptyList();
+                        }
+                        String threadId = cursor.getString(0);
+                        if (!blockedOnly && hiddenThreads.contains(threadId)) {
+                            continue;
+                        }
+                        String address = cleanAddress(cursor.getString(1));
+                        String body = cursor.getString(2);
+                        boolean blockedSender = blockMatcher.isBlocked(address) || spamMatcher.isMarkedSpam(address);
+                        if (shouldHideWholeThread(blockedOnly, blockedSender)) {
+                            byThread.remove(threadId);
+                            hiddenThreads.add(threadId);
+                            continue;
+                        }
+                        boolean keywordSpam = !isOutgoingSms(cursor.getInt(5))
+                                && spamMatcher.matchesKeywordForUnknownSender(address, body);
+                        if (!shouldShowMessage(blockedOnly, blockedSender, keywordSpam)) {
+                            continue;
+                        }
+                        if (!matchesQuery(address, body, query, matchingContactAddresses)) {
+                            continue;
+                        }
+                        long date = cursor.getLong(3);
+                        boolean unread = cursor.getInt(4) == 0;
+                        ConversationBuilder builder = byThread.get(threadId);
+                        if (builder == null) {
+                            builder = new ConversationBuilder(threadId, address, body, date);
+                            byThread.put(threadId, builder);
+                        }
+                        builder.addSearchText(body);
+                        if (unread) {
+                            builder.unreadCount++;
+                        }
+                    }
+                }
+            } catch (SecurityException | IllegalArgumentException ex) {
+                smsUnavailable = true;
+            }
         }
 
         List<Conversation> conversations = new ArrayList<>();
@@ -122,6 +142,9 @@ final class SmsStore {
                     builder.dateMillis,
                     builder.unreadCount
             ));
+        }
+        if (!blockedOnly && TextUtils.isEmpty(query) && !smsUnavailable) {
+            updateSearchIndex(byThread, conversations);
         }
         for (Conversation localConversation : LocalMmsStore.loadConversations(context, blockedOnly, query)) {
             mergeLocalConversation(conversations, localConversation);
@@ -869,6 +892,21 @@ final class SmsStore {
         return addresses;
     }
 
+    private static void updateSearchIndex(
+            Map<String, ConversationBuilder> builders,
+            List<Conversation> conversations
+    ) {
+        ArrayList<SearchThread> updated = new ArrayList<>();
+        for (Conversation conversation : conversations) {
+            ConversationBuilder builder = builders.get(conversation.threadId);
+            if (builder != null) {
+                updated.add(new SearchThread(conversation, builder.searchText.toString()));
+            }
+        }
+        SMS_SEARCH_INDEX = Collections.unmodifiableList(updated);
+        SMS_SEARCH_INDEX_READY = true;
+    }
+
     static final class SearchSelection {
         final String selection;
         final String[] args;
@@ -876,6 +914,30 @@ final class SmsStore {
         SearchSelection(String selection, String[] args) {
             this.selection = selection;
             this.args = args;
+        }
+    }
+
+    static final class SearchThread {
+        final String threadId;
+        final String address;
+        final String snippet;
+        final long dateMillis;
+        final int unreadCount;
+        final String searchableText;
+
+        SearchThread(Conversation conversation, String messageText) {
+            threadId = conversation.threadId;
+            address = conversation.address;
+            snippet = conversation.snippet;
+            dateMillis = conversation.dateMillis;
+            unreadCount = conversation.unreadCount;
+            searchableText = (conversation.address + " " + conversation.name + " " + messageText)
+                    .toLowerCase(Locale.getDefault());
+        }
+
+        boolean matches(String query) {
+            return TextUtils.isEmpty(query)
+                    || searchableText.contains(query.trim().toLowerCase(Locale.getDefault()));
         }
     }
 
@@ -893,12 +955,19 @@ final class SmsStore {
         final String snippet;
         final long dateMillis;
         int unreadCount;
+        final StringBuilder searchText = new StringBuilder();
 
         ConversationBuilder(String threadId, String address, String snippet, long dateMillis) {
             this.threadId = threadId;
             this.address = address;
             this.snippet = snippet;
             this.dateMillis = dateMillis;
+        }
+
+        void addSearchText(String body) {
+            if (!TextUtils.isEmpty(body)) {
+                searchText.append(body).append('\n');
+            }
         }
     }
 
