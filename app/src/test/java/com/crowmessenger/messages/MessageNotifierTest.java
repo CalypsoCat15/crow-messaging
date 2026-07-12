@@ -202,6 +202,8 @@ public class MessageNotifierTest {
 
         assertFalse(MessageNotifier.notificationIdsKey("Aa")
                 .equals(MessageNotifier.notificationIdsKey("BB")));
+        assertFalse(MessageNotifier.contactChannelPrefix("Aa")
+                .equals(MessageNotifier.contactChannelPrefix("BB")));
     }
 
     @Test

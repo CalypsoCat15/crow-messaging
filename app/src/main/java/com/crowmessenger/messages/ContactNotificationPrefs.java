@@ -7,12 +7,14 @@ import android.text.TextUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 final class ContactNotificationPrefs {
     static final String SILENT = "__silent__";
     private static final String PREFS = "contact_notification_sounds";
     private static final String GROUP_KEY_PREFIX = "group:";
+    private static final String RAW_KEY_PREFIX = "raw:";
 
     private ContactNotificationPrefs() {
     }
@@ -150,14 +152,20 @@ final class ContactNotificationPrefs {
         if (LocalMmsStore.isGroupAddress(address)) {
             return GROUP_KEY_PREFIX + address;
         }
-        return AddressUtil.digits(address);
+        String digits = AddressUtil.digits(address);
+        if (!TextUtils.isEmpty(digits) && AddressUtil.isSendableSmsRecipient(address)) {
+            return digits;
+        }
+        return TextUtils.isEmpty(address)
+                ? ""
+                : RAW_KEY_PREFIX + address.trim().toLowerCase(Locale.US);
     }
 
     private static String legacyKey(String address) {
         if (LocalMmsStore.isGroupAddress(address)) {
             return AddressUtil.digits(address);
         }
-        return AddressUtil.legacyPlusKey(address);
+        return AddressUtil.isSendableSmsRecipient(address) ? AddressUtil.legacyPlusKey(address) : "";
     }
 
     static final class NotificationSetting {

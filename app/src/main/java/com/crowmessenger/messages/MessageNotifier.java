@@ -16,6 +16,7 @@ import android.os.Build;
 import android.text.TextUtils;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 final class MessageNotifier {
@@ -256,8 +257,9 @@ final class MessageNotifier {
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         if (manager != null) {
             String prefix = contactChannelPrefix(address);
+            String legacyPrefix = legacyContactChannelPrefix(address);
             for (NotificationChannel channel : manager.getNotificationChannels()) {
-                if (channel.getId().startsWith(prefix)) {
+                if (channel.getId().startsWith(prefix) || channel.getId().startsWith(legacyPrefix)) {
                     manager.deleteNotificationChannel(channel.getId());
                 }
             }
@@ -318,8 +320,23 @@ final class MessageNotifier {
         return SpamFilter.matchesKeywordForUnknownSender(context, keywordSender, body);
     }
 
-    private static String contactChannelPrefix(String address) {
+    static String contactChannelPrefix(String address) {
+        return CONTACT_CHANNEL_PREFIX + Uri.encode(channelAddressKey(address)) + "_";
+    }
+
+    private static String legacyContactChannelPrefix(String address) {
         return CONTACT_CHANNEL_PREFIX + AddressUtil.stableId(address) + "_";
+    }
+
+    private static String channelAddressKey(String address) {
+        if (LocalMmsStore.isGroupAddress(address)) {
+            return address;
+        }
+        String digits = AddressUtil.digits(address);
+        if (!TextUtils.isEmpty(digits) && AddressUtil.isSendableSmsRecipient(address)) {
+            return digits;
+        }
+        return TextUtils.isEmpty(address) ? "unknown" : address.trim().toLowerCase(Locale.US);
     }
 
     private static synchronized void rememberIncomingNotification(Context context, String address, int notificationId) {

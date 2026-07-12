@@ -104,4 +104,22 @@ public class ContactNotificationPrefsTest {
         assertEquals("content://sounds/new", prefs.getString("15551234567", ""));
         assertFalse(prefs.contains("+1 (555) 123-4567"));
     }
+
+    @Test
+    public void alphabeticSenderIds_supportCaseInsensitiveCustomSounds() {
+        ContactNotificationPrefs.setSound(
+                context,
+                "Crow Alerts",
+                Uri.parse("content://sounds/crow-alerts")
+        );
+
+        assertTrue(ContactNotificationPrefs.hasCustomSound(context, "CROW ALERTS"));
+        assertEquals(
+                Uri.parse("content://sounds/crow-alerts"),
+                ContactNotificationPrefs.soundUri(context, "crow alerts")
+        );
+
+        ContactNotificationPrefs.useDefault(context, "CROW ALERTS");
+        assertFalse(ContactNotificationPrefs.hasCustomSetting(context, "Crow Alerts"));
+    }
 }
