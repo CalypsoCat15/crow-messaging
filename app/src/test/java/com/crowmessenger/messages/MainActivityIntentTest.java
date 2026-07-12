@@ -356,6 +356,17 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void readOverrideChangesCachedRowsEvenWhenAllOtherContentMatches() {
+        java.util.List<Conversation> unread = java.util.List.of(
+                new Conversation("1", "31354", "Fabletics", "Sale", 2000L, 1)
+        );
+        java.util.List<Conversation> read = MainActivity.rowsWithConversationRead(unread, "31354");
+
+        assertFalse(MainActivity.sameConversationRows(unread, read));
+        assertEquals(0, read.get(0).unreadCount);
+    }
+
+    @Test
     public void localReadOverride_survivesReloadUntilANewMessageArrives() {
         java.util.Set<String> locallyRead = new java.util.HashSet<>();
         locallyRead.add("31354");

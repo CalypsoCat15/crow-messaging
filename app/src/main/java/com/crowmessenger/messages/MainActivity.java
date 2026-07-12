@@ -2160,6 +2160,8 @@ public class MainActivity extends Activity {
         for (java.util.Map.Entry<String, List<Conversation>> entry : inboxRowsCache.snapshot().entrySet()) {
             inboxRowsCache.put(entry.getKey(), rowsWithConversationRead(entry.getValue(), address));
         }
+        // The cached inbox View still contains the old unread dot even though its row data is current.
+        renderedInboxCacheKey = "";
         List<Conversation> savedRows = InboxSnapshotStore.load(this);
         if (!savedRows.isEmpty()) {
             InboxSnapshotStore.save(this, rowsWithConversationRead(savedRows, address));
