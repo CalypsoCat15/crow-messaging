@@ -1227,7 +1227,7 @@ public class MainActivity extends Activity {
             List<Conversation> cachedInbox = inboxRowsCache.get(cacheKey);
             if (cachedInbox == null && !blocked) {
                 cachedInbox = InboxSnapshotStore.load(this);
-                TrashStore.removeHiddenOrRestoreNew(this, cachedInbox);
+                TrashStore.removeHidden(this, cachedInbox);
                 if (!cachedInbox.isEmpty()) {
                     inboxRowsCache.put(cacheKey, cachedInbox);
                 }
@@ -1248,7 +1248,7 @@ public class MainActivity extends Activity {
             List<Conversation> cachedRows = inboxRowsCache.get(cacheKey);
             if (cachedRows == null && !blocked && TextUtils.isEmpty(query)) {
                 cachedRows = InboxSnapshotStore.load(this);
-                TrashStore.removeHiddenOrRestoreNew(this, cachedRows);
+                TrashStore.removeHidden(this, cachedRows);
                 if (!cachedRows.isEmpty()) {
                     inboxRowsCache.put(cacheKey, cachedRows);
                 }
@@ -1321,7 +1321,6 @@ public class MainActivity extends Activity {
                 || MessageNotifier.shouldSuppressIncoming(this, address, "", body)) {
             return;
         }
-        TrashStore.restore(this, address);
         String cacheKey = inboxCacheKey(false, "");
         List<Conversation> cached = inboxRowsCache.get(cacheKey);
         if (cached == null) {
@@ -1414,7 +1413,6 @@ public class MainActivity extends Activity {
         pendingIncomingAddress = "";
         pendingIncomingBody = "";
         pendingIncomingDateMillis = 0L;
-        TrashStore.restore(this, address);
         if (TextUtils.isEmpty(body)) {
             return;
         }

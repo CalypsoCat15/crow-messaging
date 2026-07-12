@@ -29,6 +29,7 @@ public class MessageNotifierTest {
         context.getSharedPreferences("blocked_numbers", Context.MODE_PRIVATE).edit().clear().commit();
         context.getSharedPreferences("spam_senders", Context.MODE_PRIVATE).edit().clear().commit();
         context.getSharedPreferences("message_notifications", Context.MODE_PRIVATE).edit().clear().commit();
+        context.getSharedPreferences("trashed_conversations", Context.MODE_PRIVATE).edit().clear().commit();
         TestContactsProvider.install();
         TestContactsProvider.clear();
     }
@@ -71,6 +72,24 @@ public class MessageNotifierTest {
 
         assertFalse(intent.hasExtra(MainActivity.EXTRA_MESSAGE_BODY));
         assertFalse(intent.hasExtra(MainActivity.EXTRA_MESSAGE_DATE));
+    }
+
+    @Test
+    public void incomingNotificationIds_areUniqueForIdenticalMessages() {
+        int first = MessageNotifier.nextIncomingNotificationId(context, "15551234567");
+        int second = MessageNotifier.nextIncomingNotificationId(context, "15551234567");
+
+        assertFalse(first == second);
+    }
+
+    @Test
+    public void showIncoming_restoresTrashedConversationEvenWhenNotificationsAreUnavailable() {
+        Conversation conversation = new Conversation("4", "15551234567", "Dave", "", "Old", 100L, 0);
+        TrashStore.moveToTrash(context, conversation);
+
+        MessageNotifier.showIncoming(context, "15551234567", "New");
+
+        assertFalse(TrashStore.isTrashed(context, "15551234567"));
     }
 
     @Test

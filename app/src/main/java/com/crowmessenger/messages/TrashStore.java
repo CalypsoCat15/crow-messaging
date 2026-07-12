@@ -75,19 +75,13 @@ final class TrashStore {
         return items;
     }
 
-    static void removeHiddenOrRestoreNew(Context context, List<Conversation> conversations) {
+    static void removeHidden(Context context, List<Conversation> conversations) {
         if (conversations == null || conversations.isEmpty()) {
             return;
         }
         for (int index = conversations.size() - 1; index >= 0; index--) {
             Conversation conversation = conversations.get(index);
-            Item item = find(context, conversation.address);
-            if (item == null) {
-                continue;
-            }
-            if (conversation.dateMillis > item.trashedAtMillis) {
-                restore(context, conversation.address);
-            } else {
+            if (find(context, conversation.address) != null) {
                 conversations.remove(index);
             }
         }

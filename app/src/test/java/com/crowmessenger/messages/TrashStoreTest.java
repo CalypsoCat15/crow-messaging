@@ -36,7 +36,7 @@ public class TrashStoreTest {
 
         List<Conversation> rows = new ArrayList<>();
         rows.add(conversation);
-        TrashStore.removeHiddenOrRestoreNew(context, rows);
+        TrashStore.removeHidden(context, rows);
         assertTrue(rows.isEmpty());
 
         assertTrue(TrashStore.restore(context, "+15551234567"));
@@ -44,15 +44,15 @@ public class TrashStoreTest {
     }
 
     @Test
-    public void newerMessage_automaticallyRestoresTrashedConversation() {
+    public void newerBackgroundActivity_doesNotRestoreTrashedConversation() {
         Conversation oldConversation = new Conversation("4", "15551234567", "Dave", "Old", 100L, 0);
         TrashStore.moveToTrash(context, oldConversation);
 
         List<Conversation> rows = new ArrayList<>();
         rows.add(new Conversation("4", "15551234567", "Dave", "New", Long.MAX_VALUE, 1));
-        TrashStore.removeHiddenOrRestoreNew(context, rows);
+        TrashStore.removeHidden(context, rows);
 
-        assertEquals(1, rows.size());
-        assertFalse(TrashStore.isTrashed(context, "15551234567"));
+        assertTrue(rows.isEmpty());
+        assertTrue(TrashStore.isTrashed(context, "15551234567"));
     }
 }

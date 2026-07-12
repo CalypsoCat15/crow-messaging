@@ -160,7 +160,7 @@ final class SmsStore {
         for (DraftStore.Draft draft : DraftStore.drafts(context)) {
             mergeDraftConversation(context, conversations, draft, blockedOnly, query, matchingContactAddresses);
         }
-        TrashStore.removeHiddenOrRestoreNew(context, conversations);
+        TrashStore.removeHidden(context, conversations);
         conversations.sort((left, right) -> {
             boolean leftPinned = PinnedStore.isPinned(context, left.address);
             boolean rightPinned = PinnedStore.isPinned(context, right.address);

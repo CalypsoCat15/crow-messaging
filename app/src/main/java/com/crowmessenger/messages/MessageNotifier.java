@@ -24,6 +24,7 @@ final class MessageNotifier {
     private static final String PREFS = "message_notifications";
     private static final String IDS_PREFIX = "ids_";
     private static final String ADDRESS_PREFIX = "address_";
+    private static final String NEXT_INCOMING_ID = "next_incoming_id";
 
     private MessageNotifier() {
     }
@@ -44,6 +45,8 @@ final class MessageNotifier {
         if (shouldSuppressIncoming(context, address, senderAddress, body)) {
             return;
         }
+        // A real incoming event is the only automatic reason to bring a conversation out of Trash.
+        TrashStore.restore(context, address);
         if (!canPostNotifications(context)) {
             return;
         }
@@ -75,9 +78,16 @@ final class MessageNotifier {
                 .addAction(replyAction(context, address))
                 .setAutoCancel(true);
 
-        int notificationId = AddressUtil.stableId(address, senderAddress + "|" + body);
+        int notificationId = nextIncomingNotificationId(context, address);
         rememberIncomingNotification(context, address, notificationId);
         manager.notify(notificationId, builder.build());
+    }
+
+    static synchronized int nextIncomingNotificationId(Context context, String address) {
+        SharedPreferences preferences = prefs(context);
+        long sequence = preferences.getLong(NEXT_INCOMING_ID, 0L) + 1L;
+        preferences.edit().putLong(NEXT_INCOMING_ID, sequence).apply();
+        return AddressUtil.stableId("incoming", address + "|" + sequence);
     }
 
     static Intent incomingContentIntent(Context context, String address, String body, long dateMillis) {
