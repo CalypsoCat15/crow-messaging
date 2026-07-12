@@ -186,6 +186,26 @@ public class ScheduledMessageStoreTest {
     }
 
     @Test
+    public void deleteForAddress_removesEveryEquivalentAddressInOneBatch() {
+        long future = System.currentTimeMillis() + 60000L;
+        ScheduledMessageStore.ScheduledMessage first = ScheduledMessageStore.save(
+                context, "5551234567", "first", future
+        );
+        ScheduledMessageStore.ScheduledMessage second = ScheduledMessageStore.save(
+                context, "+1 (555) 123-4567", "second", future + 1L
+        );
+
+        List<ScheduledMessageStore.ScheduledMessage> deleted = ScheduledMessageStore.deleteForAddress(
+                context, "15551234567"
+        );
+
+        assertEquals(2, deleted.size());
+        assertNull(ScheduledMessageStore.find(context, first.id));
+        assertNull(ScheduledMessageStore.find(context, second.id));
+        assertTrue(ScheduledMessageStore.all(context).isEmpty());
+    }
+
+    @Test
     public void addressLookupsIgnoreEmptyAddress() {
         ScheduledMessageStore.ScheduledMessage saved = ScheduledMessageStore.save(
                 context,

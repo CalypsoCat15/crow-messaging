@@ -82,11 +82,19 @@ final class ScheduledMessageStore {
         return !matchingAddressMessages(context, address).isEmpty();
     }
 
-    static List<ScheduledMessage> deleteForAddress(Context context, String address) {
+    static synchronized List<ScheduledMessage> deleteForAddress(Context context, String address) {
         List<ScheduledMessage> deleted = matchingAddressMessages(context, address);
-        for (ScheduledMessage message : deleted) {
-            delete(context, message.id);
+        if (deleted.isEmpty()) {
+            return deleted;
         }
+        SharedPreferences prefs = prefs(context);
+        Set<String> keptIds = ids(prefs);
+        SharedPreferences.Editor editor = prefs.edit();
+        for (ScheduledMessage message : deleted) {
+            keptIds.remove(message.id);
+            editor.remove(KEY_PREFIX + message.id);
+        }
+        editor.putStringSet(KEY_IDS, keptIds).commit();
         return deleted;
     }
 
