@@ -41,7 +41,7 @@ final class TroubleshootingReport {
         if (TextUtils.isEmpty(events)) {
             return "No MMS events recorded.";
         }
-        return events
+        return MmsDebugStore.redactPhoneNumbers(events)
                 .replaceAll("\\*\\*\\*\\d{4}", "***")
                 .replaceAll("(?i)https?://\\S+", "[link removed]")
                 .replaceAll("(?i)file=[^\\s,]+", "file=[redacted]");

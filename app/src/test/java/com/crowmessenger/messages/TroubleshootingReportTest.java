@@ -27,6 +27,18 @@ public class TroubleshootingReportTest {
     }
 
     @Test
+    public void privateMmsEvents_redactsRawFormattedPhoneNumbers() {
+        String events = "sender=+1 (555) 123-4567 imageBytes=1234567";
+
+        String privateEvents = TroubleshootingReport.privateMmsEvents(events);
+
+        assertFalse(privateEvents.contains("555"));
+        assertFalse(privateEvents.contains("123-4567"));
+        assertTrue(privateEvents.contains("sender=***"));
+        assertTrue(privateEvents.contains("imageBytes=1234567"));
+    }
+
+    @Test
     public void create_includesPrivacyStatementAndNoStoredMessageBody() {
         Context context = RuntimeEnvironment.getApplication();
         context.getSharedPreferences("local_mms", Context.MODE_PRIVATE).edit().clear().commit();

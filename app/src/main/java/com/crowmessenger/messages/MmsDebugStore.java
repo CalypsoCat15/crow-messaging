@@ -82,7 +82,7 @@ final class MmsDebugStore {
         }
     }
 
-    private static String redactPhoneNumbers(String message) {
+    static String redactPhoneNumbers(String message) {
         if (message == null || message.isEmpty()) {
             return "";
         }
