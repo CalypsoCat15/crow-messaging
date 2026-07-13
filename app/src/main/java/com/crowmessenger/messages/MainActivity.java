@@ -1228,8 +1228,7 @@ public class MainActivity extends Activity {
         if (TextUtils.isEmpty(query) && !TextUtils.equals(renderedInboxCacheKey, cacheKey)) {
             List<Conversation> cachedInbox = inboxRowsCache.get(cacheKey);
             if (cachedInbox == null && !blocked) {
-                cachedInbox = InboxSnapshotStore.load(this);
-                TrashStore.removeHidden(this, cachedInbox);
+                cachedInbox = InboxSnapshotStore.loadVisible(this);
                 if (!cachedInbox.isEmpty()) {
                     inboxRowsCache.put(cacheKey, cachedInbox);
                 }
@@ -1249,8 +1248,7 @@ public class MainActivity extends Activity {
         if (inboxList.getChildCount() == 0) {
             List<Conversation> cachedRows = inboxRowsCache.get(cacheKey);
             if (cachedRows == null && !blocked && TextUtils.isEmpty(query)) {
-                cachedRows = InboxSnapshotStore.load(this);
-                TrashStore.removeHidden(this, cachedRows);
+                cachedRows = InboxSnapshotStore.loadVisible(this);
                 if (!cachedRows.isEmpty()) {
                     inboxRowsCache.put(cacheKey, cachedRows);
                 }
@@ -1326,7 +1324,7 @@ public class MainActivity extends Activity {
         String cacheKey = inboxCacheKey(false, "");
         List<Conversation> cached = inboxRowsCache.get(cacheKey);
         if (cached == null) {
-            cached = InboxSnapshotStore.load(this);
+            cached = InboxSnapshotStore.loadVisible(this);
         }
         ArrayList<Conversation> updated = new ArrayList<>(cached);
         Conversation previous = removeConversationRows(updated, address);
@@ -1394,7 +1392,7 @@ public class MainActivity extends Activity {
     private Conversation cachedConversationForAddress(String address) {
         List<Conversation> cached = inboxRowsCache.get(inboxCacheKey(false, ""));
         if (cached == null) {
-            cached = InboxSnapshotStore.load(this);
+            cached = InboxSnapshotStore.loadVisible(this);
         }
         for (Conversation conversation : cached) {
             if (conversation != null && sameAddress(conversation.address, address)) {
@@ -1444,7 +1442,7 @@ public class MainActivity extends Activity {
         String cacheKey = inboxCacheKey(false, "");
         List<Conversation> cached = inboxRowsCache.get(cacheKey);
         if (cached == null) {
-            cached = InboxSnapshotStore.load(this);
+            cached = InboxSnapshotStore.loadVisible(this);
         }
         ArrayList<Conversation> updated = new ArrayList<>(cached);
         Conversation previous = removeConversationRows(updated, address);
@@ -4182,7 +4180,6 @@ public class MainActivity extends Activity {
     private void moveConversationToTrash(Conversation conversation) {
         flushPendingDraft();
         ConversationSuppression.moveToTrash(this, conversation);
-        InboxSnapshotStore.remove(this, conversation.address);
         discardCachedInboxScreen();
         discardConversationCaches(conversation.address);
         Toast.makeText(this, "Conversation moved to Trash.", Toast.LENGTH_SHORT).show();

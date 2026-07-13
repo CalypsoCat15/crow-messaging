@@ -92,6 +92,14 @@ final class InboxSnapshotStore {
         return conversations;
     }
 
+    static List<Conversation> loadVisible(Context context) {
+        List<Conversation> conversations = load(context);
+        conversations.removeIf(conversation -> Blocklist.isBlocked(context, conversation.address)
+                || SpamFilter.isMarkedSpam(context, conversation.address));
+        TrashStore.removeHidden(context, conversations);
+        return conversations;
+    }
+
     static void remove(Context context, String address) {
         List<Conversation> rows = load(context);
         rows.removeIf(conversation -> AddressUtil.sameConversationAddress(conversation.address, address));

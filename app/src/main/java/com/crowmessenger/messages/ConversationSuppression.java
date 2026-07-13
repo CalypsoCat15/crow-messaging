@@ -10,27 +10,28 @@ final class ConversationSuppression {
     static void block(Context context, String address) {
         Blocklist.block(context, address);
         if (Blocklist.isBlocked(context, address)) {
-            clearNotifications(context, address);
+            clearSuppressedConversationState(context, address);
         }
     }
 
     static void markSpam(Context context, String address, String threadId) {
         SpamFilter.markSpam(context, address, threadId);
         if (SpamFilter.isMarkedSpam(context, address)) {
-            clearNotifications(context, address);
+            clearSuppressedConversationState(context, address);
         }
     }
 
     static void moveToTrash(Context context, Conversation conversation) {
         TrashStore.moveToTrash(context, conversation);
         if (conversation != null && TrashStore.isTrashed(context, conversation.address)) {
-            clearNotifications(context, conversation.address);
+            clearSuppressedConversationState(context, conversation.address);
         }
     }
 
-    private static void clearNotifications(Context context, String address) {
+    private static void clearSuppressedConversationState(Context context, String address) {
         if (context != null && !TextUtils.isEmpty(address)) {
             MessageNotifier.clearIncomingForAddress(context, address);
+            InboxSnapshotStore.remove(context, address);
         }
     }
 }
