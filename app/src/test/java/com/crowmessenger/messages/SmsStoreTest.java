@@ -31,6 +31,20 @@ public class SmsStoreTest {
     }
 
     @Test
+    public void phoneFallbackMatching_neverUsesDigitsEmbeddedInSenderIds() {
+        assertTrue(SmsStore.matchesPhoneFallbackAddress(
+                "+1 (555) 123-4567",
+                "5551234567"
+        ));
+        assertFalse(SmsStore.matchesPhoneFallbackAddress("ACME2FA", "2"));
+        assertFalse(SmsStore.matchesPhoneFallbackAddress("2", "ACME2FA"));
+        assertFalse(SmsStore.matchesPhoneFallbackAddress(
+                "group:15551234567|15557654321",
+                "15551234567"
+        ));
+    }
+
+    @Test
     public void searchSelection_filtersInProviderBeforeReadingMessageHistory() {
         HashSet<String> matchingContacts = new HashSet<>();
         matchingContacts.add("15557654321");

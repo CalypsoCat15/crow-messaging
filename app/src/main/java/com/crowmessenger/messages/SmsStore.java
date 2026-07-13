@@ -761,8 +761,7 @@ final class SmsStore {
     }
 
     private static String findRecentThreadIdForMatchingAddress(Context context, String address) {
-        String target = AddressUtil.digits(address);
-        if (TextUtils.isEmpty(target)) {
+        if (!AddressUtil.hasSinglePhoneAddress(address)) {
             return "";
         }
         try (Cursor cursor = context.getContentResolver().query(
@@ -775,7 +774,7 @@ final class SmsStore {
                 return "";
             }
             while (cursor.moveToNext()) {
-                if (AddressUtil.sameDigits(target, cursor.getString(1))) {
+                if (matchesPhoneFallbackAddress(address, cursor.getString(1))) {
                     return cursor.getString(0);
                 }
             }
@@ -828,8 +827,7 @@ final class SmsStore {
     }
 
     private static List<String> recentSmsIdsForMatchingAddress(Context context, String address, boolean unreadOnly) {
-        String target = AddressUtil.digits(address);
-        if (TextUtils.isEmpty(target)) {
+        if (!AddressUtil.hasSinglePhoneAddress(address)) {
             return Collections.emptyList();
         }
         String selection = unreadOnly
@@ -846,7 +844,7 @@ final class SmsStore {
                 return ids;
             }
             while (cursor.moveToNext()) {
-                if (AddressUtil.sameDigits(target, cursor.getString(1))) {
+                if (matchesPhoneFallbackAddress(address, cursor.getString(1))) {
                     ids.add(cursor.getString(0));
                 }
             }
@@ -857,8 +855,7 @@ final class SmsStore {
     }
 
     private static UnreadSmsState unreadSmsState(Context context, String address) {
-        String target = AddressUtil.digits(address);
-        if (TextUtils.isEmpty(target)) {
+        if (!AddressUtil.hasSinglePhoneAddress(address)) {
             return UnreadSmsState.NONE;
         }
         String selection = "(" + Telephony.Sms.READ + "=0 OR " + Telephony.Sms.SEEN + "=0)";
@@ -872,7 +869,7 @@ final class SmsStore {
                 return UnreadSmsState.UNKNOWN;
             }
             while (cursor.moveToNext()) {
-                if (AddressUtil.sameDigits(target, cursor.getString(1))) {
+                if (matchesPhoneFallbackAddress(address, cursor.getString(1))) {
                     return UnreadSmsState.PRESENT;
                 }
             }
@@ -880,6 +877,11 @@ final class SmsStore {
         } catch (SecurityException | IllegalArgumentException ex) {
             return UnreadSmsState.UNKNOWN;
         }
+    }
+
+    static boolean matchesPhoneFallbackAddress(String address, String candidate) {
+        return AddressUtil.hasSinglePhoneAddress(address)
+                && AddressUtil.isMatchingPhoneValue(address, candidate);
     }
 
     private enum UnreadSmsState {
