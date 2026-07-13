@@ -172,4 +172,18 @@ public class SpamFilterTest {
 
         assertTrue(SpamFilter.isSpam(context, "15551234567", "Did you donate anything?"));
     }
+
+    @Test
+    public void savedNumericShortCodeDoesNotWhitelistAlphanumericSenderWithSameDigits() {
+        SpamFilter.addCustomKeywords(context, "donate");
+        TestContactsProvider.add("2", "Short Code Two");
+
+        assertTrue(ContactLookup.isSavedContact(context, "2"));
+        assertTrue(SpamFilter.matchesKeywordForUnknownSender(
+                context,
+                "ACME2FA",
+                "Please donate today"
+        ));
+        assertEquals(2, TestContactsProvider.queryCount());
+    }
 }

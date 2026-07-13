@@ -6,7 +6,6 @@ import android.net.Uri;
 import android.provider.ContactsContract;
 import android.text.TextUtils;
 
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -59,9 +58,6 @@ final class ContactLookup {
         if (TextUtils.isEmpty(address)) {
             return "";
         }
-        String digits = AddressUtil.digits(address);
-        return TextUtils.isEmpty(digits)
-                ? address.trim().toLowerCase(Locale.US)
-                : digits;
+        return AddressUtil.stableKey(address);
     }
 }
