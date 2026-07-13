@@ -247,31 +247,62 @@ final class SmsStore {
         }
         String threadId = findThreadIdForAddress(context, address);
         if (!TextUtils.isEmpty(threadId)) {
-            List<ChatMessage> messages = loadSmsMessages(
+            return loadRecentMessages(
                     context,
                     address,
                     threadId,
                     blockedOnly,
                     Telephony.Sms.THREAD_ID + "=?",
                     new String[] { threadId },
-                    Telephony.Sms.DATE + " DESC LIMIT " + Math.max(1, limit),
-                    true
+                    limit
             );
-            appendLocalMessagesAndSort(context, address, messages, blockedOnly);
-            return mostRecent(messages, limit);
         }
-        List<ChatMessage> messages = loadSmsMessages(
+        return loadRecentMessages(
                 context,
                 address,
                 "",
                 blockedOnly,
                 Telephony.Sms.ADDRESS + "=?",
                 new String[] { address },
-                Telephony.Sms.DATE + " DESC LIMIT " + Math.max(1, limit),
+                limit
+        );
+    }
+
+    private static List<ChatMessage> loadRecentMessages(
+            Context context,
+            String address,
+            String threadId,
+            boolean blockedOnly,
+            String selection,
+            String[] selectionArgs,
+            int limit
+    ) {
+        int safeLimit = Math.max(1, limit);
+        SmsMessageLoad limited = loadSmsMessagePage(
+                context,
+                address,
+                threadId,
+                blockedOnly,
+                selection,
+                selectionArgs,
+                Telephony.Sms.DATE + " DESC LIMIT " + safeLimit,
                 true
         );
+        List<ChatMessage> messages = limited.messages;
+        if (limited.rawRowCount == safeLimit && limited.filteredAny) {
+            messages = loadSmsMessages(
+                    context,
+                    address,
+                    threadId,
+                    blockedOnly,
+                    selection,
+                    selectionArgs,
+                    Telephony.Sms.DATE + " ASC",
+                    false
+            );
+        }
         appendLocalMessagesAndSort(context, address, messages, blockedOnly);
-        return mostRecent(messages, limit);
+        return mostRecent(messages, safeLimit);
     }
 
     private static List<ChatMessage> loadSmsMessages(
@@ -284,7 +315,31 @@ final class SmsStore {
             String sortOrder,
             boolean newestFirst
     ) {
+        return loadSmsMessagePage(
+                context,
+                address,
+                threadId,
+                blockedOnly,
+                selection,
+                selectionArgs,
+                sortOrder,
+                newestFirst
+        ).messages;
+    }
+
+    private static SmsMessageLoad loadSmsMessagePage(
+            Context context,
+            String address,
+            String threadId,
+            boolean blockedOnly,
+            String selection,
+            String[] selectionArgs,
+            String sortOrder,
+            boolean newestFirst
+    ) {
         List<ChatMessage> messages = new ArrayList<>();
+        int rawRowCount = 0;
+        boolean filteredAny = false;
         Blocklist.Matcher blockMatcher = Blocklist.matcher(context);
         SpamFilter.Matcher spamMatcher = SpamFilter.matcher(context);
         try (Cursor cursor = context.getContentResolver().query(
@@ -294,9 +349,10 @@ final class SmsStore {
                 selectionArgs,
                 sortOrder)) {
             if (cursor == null) {
-                return messages;
+                return new SmsMessageLoad(messages, 0, false);
             }
             while (cursor.moveToNext()) {
+                rawRowCount++;
                 int type = cursor.getInt(2);
                 String body = cursor.getString(0);
                 boolean blockedSender = blockMatcher.isBlocked(address)
@@ -304,6 +360,7 @@ final class SmsStore {
                 boolean keywordSpam = !isOutgoingSms(type)
                         && spamMatcher.matchesKeywordForUnknownSender(address, body);
                 if (!shouldShowMessage(blockedOnly, blockedSender, keywordSpam)) {
+                    filteredAny = true;
                     continue;
                 }
                 messages.add(ChatMessage.storedSms(
@@ -314,12 +371,24 @@ final class SmsStore {
                 ));
             }
         } catch (SecurityException | IllegalArgumentException ignored) {
-            return messages;
+            return new SmsMessageLoad(messages, rawRowCount, filteredAny);
         }
         if (newestFirst) {
             Collections.reverse(messages);
         }
-        return messages;
+        return new SmsMessageLoad(messages, rawRowCount, filteredAny);
+    }
+
+    private static final class SmsMessageLoad {
+        final List<ChatMessage> messages;
+        final int rawRowCount;
+        final boolean filteredAny;
+
+        SmsMessageLoad(List<ChatMessage> messages, int rawRowCount, boolean filteredAny) {
+            this.messages = messages;
+            this.rawRowCount = rawRowCount;
+            this.filteredAny = filteredAny;
+        }
     }
 
     private static void appendLocalMessagesAndSort(Context context, String address, List<ChatMessage> messages, boolean blockedOnly) {

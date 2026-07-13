@@ -11,6 +11,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.RuntimeEnvironment;
 
 import android.content.Context;
+import android.provider.Telephony;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -359,6 +360,101 @@ public class SmsStoreTest {
     }
 
     @Test
+    public void recentNormalMessages_refillPastFullPageOfKeywordSpam() {
+        Context context = prepareRecentMessageTest();
+        String address = "15550001111";
+        String threadId = "recent-normal";
+        SpamFilter.addCustomKeywords(context, "spam offer");
+        TestSmsProvider.addMessage("1", threadId, address, "old clean one", 1000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("2", threadId, address, "old clean two", 2000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("3", threadId, address, "old clean three", 3000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("4", threadId, address, "spam offer four", 4000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("5", threadId, address, "spam offer five", 5000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("6", threadId, address, "spam offer six", 6000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+
+        List<ChatMessage> messages = SmsStore.loadRecentMessagesForAddress(context, address, 3, false);
+
+        assertEquals(List.of("old clean one", "old clean two", "old clean three"), messageBodies(messages));
+        assertEquals(2, TestSmsProvider.messageQueryCount());
+    }
+
+    @Test
+    public void recentBlockedMessages_refillPastFullPageOfCleanMessages() {
+        Context context = prepareRecentMessageTest();
+        String address = "15550002222";
+        String threadId = "recent-blocked";
+        SpamFilter.addCustomKeywords(context, "spam offer");
+        TestSmsProvider.addMessage("1", threadId, address, "spam offer one", 1000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("2", threadId, address, "spam offer two", 2000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("3", threadId, address, "spam offer three", 3000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("4", threadId, address, "new clean four", 4000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("5", threadId, address, "new clean five", 5000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("6", threadId, address, "new clean six", 6000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+
+        List<ChatMessage> messages = SmsStore.loadRecentMessagesForAddress(context, address, 3, true);
+
+        assertEquals(List.of("spam offer one", "spam offer two", "spam offer three"), messageBodies(messages));
+        assertEquals(2, TestSmsProvider.messageQueryCount());
+    }
+
+    @Test
+    public void recentMessages_refillKeepsLimitPlusOneForOlderState() {
+        Context context = prepareRecentMessageTest();
+        String address = "15550003333";
+        String threadId = "recent-older";
+        SpamFilter.addCustomKeywords(context, "spam offer");
+        TestSmsProvider.addMessage("1", threadId, address, "visible one", 1000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("2", threadId, address, "visible two", 2000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("3", threadId, address, "visible three", 3000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("4", threadId, address, "visible four", 4000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("5", threadId, address, "spam offer five", 5000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("6", threadId, address, "visible six", 6000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+
+        List<ChatMessage> loadedForTwoMessagePage = SmsStore.loadRecentMessagesForAddress(context, address, 3, false);
+
+        assertEquals(List.of("visible three", "visible four", "visible six"), messageBodies(loadedForTwoMessagePage));
+        assertTrue(loadedForTwoMessagePage.size() > 2);
+        assertEquals(2, TestSmsProvider.messageQueryCount());
+    }
+
+    @Test
+    public void recentMessages_doNotFallbackWhenFilteredPageIsNotFull() {
+        Context context = prepareRecentMessageTest();
+        String address = "15550004444";
+        String threadId = "recent-short";
+        SpamFilter.addCustomKeywords(context, "spam offer");
+        TestSmsProvider.addMessage("1", threadId, address, "old clean", 1000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+        TestSmsProvider.addMessage("2", threadId, address, "spam offer two", 2000L, Telephony.Sms.MESSAGE_TYPE_INBOX);
+
+        List<ChatMessage> messages = SmsStore.loadRecentMessagesForAddress(context, address, 3, false);
+
+        assertEquals(List.of("old clean"), messageBodies(messages));
+        assertEquals(1, TestSmsProvider.messageQueryCount());
+    }
+
+    @Test
+    public void recentMessages_keepLimitedFastPathAndChronologicalOrderWithoutFiltering() {
+        Context context = prepareRecentMessageTest();
+        String address = "15550005555";
+        String threadId = "recent-fast";
+        for (int index = 1; index <= 5; index++) {
+            TestSmsProvider.addMessage(
+                    String.valueOf(index),
+                    threadId,
+                    address,
+                    "clean " + index,
+                    index * 1000L,
+                    Telephony.Sms.MESSAGE_TYPE_INBOX
+            );
+        }
+
+        List<ChatMessage> messages = SmsStore.loadRecentMessagesForAddress(context, address, 3, false);
+
+        assertEquals(List.of("clean 3", "clean 4", "clean 5"), messageBodies(messages));
+        assertEquals(1, TestSmsProvider.messageQueryCount());
+    }
+
+    @Test
     public void deleteConversation_clearsDraftForAddress() {
         Context context = RuntimeEnvironment.getApplication();
         context.getSharedPreferences("message_drafts", Context.MODE_PRIVATE)
@@ -412,5 +508,24 @@ public class SmsStoreTest {
                 .contains(notificationKey));
         assertFalse(context.getSharedPreferences("message_notifications", Context.MODE_PRIVATE)
                 .contains("address_" + AddressUtil.stableId(address)));
+    }
+
+    private static Context prepareRecentMessageTest() {
+        Context context = RuntimeEnvironment.getApplication();
+        TestSmsProvider.install();
+        context.getSharedPreferences("spam_senders", Context.MODE_PRIVATE).edit().clear().commit();
+        context.getSharedPreferences("blocked_numbers", Context.MODE_PRIVATE).edit().clear().commit();
+        context.getSharedPreferences("local_mms", Context.MODE_PRIVATE).edit().clear().commit();
+        context.getSharedPreferences("pending_sms_sends", Context.MODE_PRIVATE).edit().clear().commit();
+        ContactLookup.clearCache();
+        return context;
+    }
+
+    private static List<String> messageBodies(List<ChatMessage> messages) {
+        ArrayList<String> bodies = new ArrayList<>();
+        for (ChatMessage message : messages) {
+            bodies.add(message.body);
+        }
+        return bodies;
     }
 }
