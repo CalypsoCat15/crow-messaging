@@ -891,14 +891,17 @@ final class LocalMmsStore {
     }
 
     private static boolean sameParticipant(String first, String second) {
-        if (TextUtils.equals(first, second)) {
+        String firstKey = participantKey(first);
+        String secondKey = participantKey(second);
+        if (TextUtils.isEmpty(firstKey) || TextUtils.isEmpty(secondKey)) {
+            return false;
+        }
+        if (TextUtils.equals(firstKey, secondKey)) {
             return true;
         }
-        String firstDigits = AddressUtil.digits(first);
-        String secondDigits = AddressUtil.digits(second);
-        return !TextUtils.isEmpty(firstDigits)
-                && !TextUtils.isEmpty(secondDigits)
-                && AddressUtil.sameDigits(firstDigits, secondDigits);
+        return AddressUtil.hasSinglePhoneAddress(firstKey)
+                && AddressUtil.hasSinglePhoneAddress(secondKey)
+                && AddressUtil.sameDigits(firstKey, secondKey);
     }
 
     private static String preferredStoredGroupAddress(
@@ -952,7 +955,9 @@ final class LocalMmsStore {
             return "";
         }
         String digits = AddressUtil.digits(participant);
-        if (digits.length() >= 7 && digits.length() <= 15) {
+        if (AddressUtil.isSendableSmsRecipient(participant)
+                && digits.length() >= 7
+                && digits.length() <= 15) {
             return digits;
         }
         String cleaned = participant.trim().toLowerCase(Locale.US);

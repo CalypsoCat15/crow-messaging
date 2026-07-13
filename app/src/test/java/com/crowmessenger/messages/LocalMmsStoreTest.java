@@ -296,6 +296,21 @@ public class LocalMmsStoreTest {
     }
 
     @Test
+    public void groupParticipants_rejectSenderIdsAndKeepEmailDigitsSeparate() {
+        String group = LocalMmsStore.conversationAddress("", List.of(
+                "ALERT5551234",
+                "5551234",
+                "5559876",
+                "person5551234@example.com"
+        ));
+
+        assertEquals(
+                List.of("5551234", "5559876", "person5551234@example.com"),
+                LocalMmsStore.participantsForAddress(group)
+        );
+    }
+
+    @Test
     public void outgoingGroupAddress_reusesReceivedGroupWithOwnNumber() {
         String receivedGroup = LocalMmsStore.conversationAddress("", List.of(
                 "15550000001",

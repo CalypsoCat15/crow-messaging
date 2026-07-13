@@ -94,7 +94,9 @@ final class GroupMmsRecipients {
             return "";
         }
         String digits = AddressUtil.digits(trimmed);
-        if (digits.length() >= 7 && digits.length() <= 15) {
+        if (AddressUtil.isSendableSmsRecipient(trimmed)
+                && digits.length() >= 7
+                && digits.length() <= 15) {
             return digits;
         }
         int at = lower.indexOf('@');
@@ -114,7 +116,10 @@ final class GroupMmsRecipients {
             return;
         }
         for (String existing : recipients) {
-            if (TextUtils.equals(existing, recipient) || AddressUtil.sameDigits(existing, recipient)) {
+            if (TextUtils.equals(existing, recipient)
+                    || (AddressUtil.hasSinglePhoneAddress(existing)
+                    && AddressUtil.hasSinglePhoneAddress(recipient)
+                    && AddressUtil.sameDigits(existing, recipient))) {
                 return;
             }
         }
@@ -126,7 +131,9 @@ final class GroupMmsRecipients {
             return false;
         }
         for (String ownNumber : ownNumbers) {
-            if (AddressUtil.sameDigits(recipient, ownNumber)) {
+            if (AddressUtil.hasSinglePhoneAddress(recipient)
+                    && AddressUtil.hasSinglePhoneAddress(ownNumber)
+                    && AddressUtil.sameDigits(recipient, ownNumber)) {
                 return true;
             }
         }

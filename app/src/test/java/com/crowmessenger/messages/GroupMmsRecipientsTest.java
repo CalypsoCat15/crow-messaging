@@ -66,6 +66,25 @@ public class GroupMmsRecipientsTest {
     @Test
     public void normalizedRecipientRejectsThreadKeysBeforeDigits() {
         assertEquals("", GroupMmsRecipients.normalizedRecipient("thread:1234567"));
+        assertEquals("", GroupMmsRecipients.normalizedRecipient("ALERT5551234"));
+        assertEquals("person5551234@example.com",
+                GroupMmsRecipients.normalizedRecipient("PERSON5551234@example.com"));
+    }
+
+    @Test
+    public void remoteRecipients_doNotMergeEmailDigitsWithPhoneNumber() {
+        String group = LocalMmsStore.conversationAddress("", Arrays.asList(
+                "5551234",
+                "person5551234@example.com",
+                "5559876"
+        ));
+
+        List<String> recipients = GroupMmsRecipients.remoteRecipients(group, new HashSet<>());
+
+        assertTrue(recipients.contains("5551234"));
+        assertTrue(recipients.contains("person5551234@example.com"));
+        assertTrue(recipients.contains("5559876"));
+        assertEquals(3, recipients.size());
     }
 
     @Test
