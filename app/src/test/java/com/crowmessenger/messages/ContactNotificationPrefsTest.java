@@ -122,4 +122,16 @@ public class ContactNotificationPrefsTest {
         ContactNotificationPrefs.useDefault(context, "CROW ALERTS");
         assertFalse(ContactNotificationPrefs.hasCustomSetting(context, "Crow Alerts"));
     }
+
+    @Test
+    public void alphanumericSenderSound_doesNotOverwriteNumericShortCodeSound() {
+        ContactNotificationPrefs.setSound(context, "2", Uri.parse("content://sounds/two"));
+        ContactNotificationPrefs.setSound(context, "ACME2FA", Uri.parse("content://sounds/acme"));
+
+        assertEquals(Uri.parse("content://sounds/two"), ContactNotificationPrefs.soundUri(context, "2"));
+        assertEquals(Uri.parse("content://sounds/acme"), ContactNotificationPrefs.soundUri(context, "acme2fa"));
+
+        ContactNotificationPrefs.useDefault(context, "ACME2FA");
+        assertTrue(ContactNotificationPrefs.hasCustomSound(context, "2"));
+    }
 }

@@ -71,6 +71,14 @@ public class SpamFilterTest {
     }
 
     @Test
+    public void alphanumericSenderId_doesNotMarkItsDigitsAsSpam() {
+        SpamFilter.markSpam(context, "ACME2FA");
+
+        assertTrue(SpamFilter.isMarkedSpam(context, "acme2fa"));
+        assertFalse(SpamFilter.isMarkedSpam(context, "2"));
+    }
+
+    @Test
     public void addCustomKeywords_ignoresNullOrEmptyInput() {
         assertTrue(SpamFilter.customKeywords(context).isEmpty());
 

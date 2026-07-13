@@ -85,11 +85,11 @@ final class AddressUtil {
     }
 
     static boolean hasSinglePhoneAddress(String address) {
-        return !LocalMmsStore.isGroupAddress(address) && !TextUtils.isEmpty(digits(address));
+        return isSendableSmsRecipient(address);
     }
 
     static boolean isSendableSmsRecipient(String address) {
-        if (!hasSinglePhoneAddress(address)) {
+        if (LocalMmsStore.isGroupAddress(address) || TextUtils.isEmpty(digits(address))) {
             return false;
         }
         String value = address.trim();

@@ -202,7 +202,7 @@ final class SpamFilter {
             return RAW_PREFIX + address.trim().toLowerCase(Locale.US);
         }
         String digits = AddressUtil.digits(address);
-        if (!TextUtils.isEmpty(digits)) {
+        if (!TextUtils.isEmpty(digits) && AddressUtil.isSendableSmsRecipient(address)) {
             return TEL_PREFIX + digits;
         }
         if (TextUtils.isEmpty(address)) {

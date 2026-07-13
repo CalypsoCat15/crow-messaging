@@ -61,6 +61,7 @@ public class AddressUtilTest {
         assertFalse(AddressUtil.isSendableSmsRecipient("15551234567,15557654321"));
         assertFalse(AddressUtil.isSendableSmsRecipient("group:15551234567|15557654321"));
         assertFalse(AddressUtil.isSendableSmsRecipient("no-number"));
+        assertFalse(AddressUtil.hasSinglePhoneAddress("ACME2FA"));
     }
 
     @Test
@@ -84,5 +85,16 @@ public class AddressUtilTest {
         assertTrue(AddressUtil.containsMatchingConversationAddress(values, "CROW ALERTS"));
         assertTrue(AddressUtil.containsMatchingConversationAddress(values, "group:one|two"));
         assertFalse(AddressUtil.containsMatchingConversationAddress(values, "group:two|one"));
+    }
+
+    @Test
+    public void phoneValueMatching_doesNotUseDigitsEmbeddedInSenderIds() {
+        Set<String> values = new HashSet<>(List.of("2", "15551234567"));
+
+        assertFalse(AddressUtil.containsMatchingPhoneValue(values, "ACME2FA"));
+        assertFalse(AddressUtil.isMatchingPhoneValue("ACME2FA", "2"));
+
+        AddressUtil.removeMatchingPhoneValues(values, "ACME2FA");
+        assertTrue(values.contains("2"));
     }
 }
