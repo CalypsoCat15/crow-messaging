@@ -2152,10 +2152,20 @@ public class MainActivity extends Activity {
         clearConversationUnreadImmediately(address);
         Context appContext = getApplicationContext();
         stateWriter.submit(() -> {
-            SmsStore.markConversationReadVerified(appContext, threadId, address);
+            boolean readVerified = SmsStore.markConversationReadVerified(appContext, threadId, address);
+            if (readVerified) {
+                List<Conversation> savedRows = InboxSnapshotStore.load(appContext);
+                if (!savedRows.isEmpty()) {
+                    InboxSnapshotStore.save(appContext, rowsWithConversationRead(savedRows, address));
+                }
+            }
             runOnUiThread(() -> {
                 if (isDestroyed()) {
                     return;
+                }
+                reconcileReadOverride(locallyReadAddresses, address, readVerified);
+                if (!readVerified) {
+                    invalidateInboxPresentationCache();
                 }
                 if (screenMode == ScreenMode.INBOX && activityResumed) {
                     refreshInboxList(true);
@@ -2174,10 +2184,6 @@ public class MainActivity extends Activity {
         }
         // The cached inbox View still contains the old unread dot even though its row data is current.
         renderedInboxCacheKey = "";
-        List<Conversation> savedRows = InboxSnapshotStore.load(this);
-        if (!savedRows.isEmpty()) {
-            InboxSnapshotStore.save(this, rowsWithConversationRead(savedRows, address));
-        }
         SmsStore.markSearchIndexRead(address);
         MessageNotifier.clearIncomingForAddress(this, address);
     }
@@ -2227,6 +2233,10 @@ public class MainActivity extends Activity {
             }
         }
         return removed;
+    }
+
+    static boolean reconcileReadOverride(Set<String> addresses, String address, boolean readVerified) {
+        return !readVerified && removeMatchingAddress(addresses, address);
     }
 
     private static boolean containsMatchingAddress(Set<String> addresses, String address) {

@@ -432,6 +432,18 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void readOverride_isRemovedOnlyWhenAndroidCannotVerifyReadState() {
+        java.util.Set<String> verified = new java.util.HashSet<>();
+        verified.add("+1 (555) 123-4567");
+        java.util.Set<String> failed = new java.util.HashSet<>(verified);
+
+        assertFalse(MainActivity.reconcileReadOverride(verified, "15551234567", true));
+        assertTrue(verified.contains("+1 (555) 123-4567"));
+        assertTrue(MainActivity.reconcileReadOverride(failed, "15551234567", false));
+        assertTrue(failed.isEmpty());
+    }
+
+    @Test
     public void startupMaintenance_allowsOnlyOneWorkerAtATime() {
         assertTrue(MainActivity.beginStartupMaintenance());
         try {
