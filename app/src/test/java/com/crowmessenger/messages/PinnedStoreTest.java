@@ -92,4 +92,23 @@ public class PinnedStoreTest {
         assertEquals("Newest", conversations.get(2).name);
         assertEquals("Older", conversations.get(3).name);
     }
+
+    @Test
+    public void senderIdPins_matchCaseInsensitivelyAndMigrateOnSave() {
+        SharedPreferences prefs = context.getSharedPreferences("pinned_conversations", Context.MODE_PRIVATE);
+        prefs.edit()
+                .putStringSet("addresses", new HashSet<>(List.of("Crow Alerts")))
+                .commit();
+
+        assertTrue(PinnedStore.isPinned(context, "CROW ALERTS"));
+
+        PinnedStore.pin(context, "crow alerts");
+        assertEquals(
+                new HashSet<>(List.of("crow alerts")),
+                prefs.getStringSet("addresses", new HashSet<>())
+        );
+
+        PinnedStore.unpin(context, "CROW ALERTS");
+        assertFalse(PinnedStore.isPinned(context, "crow alerts"));
+    }
 }

@@ -44,7 +44,7 @@ final class PinnedStore {
         private boolean isPinned(String address) {
             String key = key(address);
             return !TextUtils.isEmpty(key)
-                    && (pins.contains(key) || AddressUtil.containsMatchingPhoneValue(pins, address));
+                    && (pins.contains(key) || AddressUtil.containsMatchingConversationAddress(pins, address));
         }
     }
 
@@ -54,7 +54,7 @@ final class PinnedStore {
             return;
         }
         Set<String> updated = pins(context);
-        AddressUtil.removeMatchingPhoneValues(updated, address);
+        AddressUtil.removeMatchingConversationAddresses(updated, address);
         updated.add(key);
         save(context, updated);
     }
@@ -65,8 +65,7 @@ final class PinnedStore {
             return;
         }
         Set<String> updated = pins(context);
-        updated.remove(key);
-        AddressUtil.removeMatchingPhoneValues(updated, address);
+        AddressUtil.removeMatchingConversationAddresses(updated, address);
         save(context, updated);
     }
 

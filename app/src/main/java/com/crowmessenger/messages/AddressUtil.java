@@ -3,6 +3,7 @@ package com.crowmessenger.messages;
 import android.text.TextUtils;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 final class AddressUtil {
@@ -47,7 +48,40 @@ final class AddressUtil {
         if (TextUtils.equals(first, second)) {
             return true;
         }
+        boolean firstPhone = isSendableSmsRecipient(first);
+        boolean secondPhone = isSendableSmsRecipient(second);
+        if (firstPhone != secondPhone) {
+            return false;
+        }
+        if (!firstPhone) {
+            return first != null && second != null && first.trim().equalsIgnoreCase(second.trim());
+        }
         return sameDigits(first, second);
+    }
+
+    static boolean containsMatchingConversationAddress(Set<String> storedValues, String address) {
+        if (storedValues == null || TextUtils.isEmpty(address)) {
+            return false;
+        }
+        for (String storedValue : storedValues) {
+            if (sameConversationAddress(storedValue, address)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static void removeMatchingConversationAddresses(Set<String> storedValues, String address) {
+        if (storedValues == null || TextUtils.isEmpty(address)) {
+            return;
+        }
+        Set<String> removals = new HashSet<>();
+        for (String storedValue : storedValues) {
+            if (sameConversationAddress(storedValue, address)) {
+                removals.add(storedValue);
+            }
+        }
+        storedValues.removeAll(removals);
     }
 
     static boolean hasSinglePhoneAddress(String address) {
@@ -129,10 +163,10 @@ final class AddressUtil {
             return value;
         }
         String digits = digits(value);
-        if (!TextUtils.isEmpty(digits)) {
+        if (!TextUtils.isEmpty(digits) && isSendableSmsRecipient(value)) {
             return digits;
         }
-        return TextUtils.isEmpty(value) ? "unknown" : value;
+        return TextUtils.isEmpty(value) ? "unknown" : value.trim().toLowerCase(Locale.US);
     }
 
     interface PhoneValueExtractor {

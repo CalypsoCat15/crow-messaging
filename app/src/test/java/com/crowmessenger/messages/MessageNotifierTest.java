@@ -99,13 +99,13 @@ public class MessageNotifierTest {
 
     @Test
     public void failureNotifications_keepSeparateTapActionsForCollidingSenderIds() {
-        assertEquals(AddressUtil.stableId("send_failed", "Aa"),
-                AddressUtil.stableId("send_failed", "BB"));
+        assertEquals(AddressUtil.stableId("send_failed", "xzgpfxmv"),
+                AddressUtil.stableId("send_failed", "nuuekjzj"));
         PendingIntent first = MessageNotifier.failureContentPendingIntent(
-                context, "send_failed", "Aa", 101
+                context, "send_failed", "xzgpfxmv", 101
         );
         PendingIntent second = MessageNotifier.failureContentPendingIntent(
-                context, "send_failed", "BB", 102
+                context, "send_failed", "nuuekjzj", 102
         );
 
         assertFalse(first.equals(second));
@@ -224,17 +224,17 @@ public class MessageNotifierTest {
 
     @Test
     public void notificationKeys_doNotCollideForDifferentSenderIdsWithSameJavaHash() {
-        assertEquals(AddressUtil.stableId("Aa"), AddressUtil.stableId("BB"));
+        assertEquals(AddressUtil.stableId("xzgpfxmv"), AddressUtil.stableId("nuuekjzj"));
 
-        assertFalse(MessageNotifier.notificationIdsKey("Aa")
-                .equals(MessageNotifier.notificationIdsKey("BB")));
-        assertFalse(MessageNotifier.contactChannelPrefix("Aa")
-                .equals(MessageNotifier.contactChannelPrefix("BB")));
+        assertFalse(MessageNotifier.notificationIdsKey("xzgpfxmv")
+                .equals(MessageNotifier.notificationIdsKey("nuuekjzj")));
+        assertFalse(MessageNotifier.contactChannelPrefix("xzgpfxmv")
+                .equals(MessageNotifier.contactChannelPrefix("nuuekjzj")));
     }
 
     @Test
     public void clearIncomingForAddress_doesNotClearCollidingLegacySender() {
-        String storedAddress = "Aa";
+        String storedAddress = "xzgpfxmv";
         int collidingId = AddressUtil.stableId(storedAddress);
         SharedPreferences prefs = context.getSharedPreferences("message_notifications", Context.MODE_PRIVATE);
         prefs.edit()
@@ -242,7 +242,7 @@ public class MessageNotifierTest {
                 .putString("address_" + collidingId, storedAddress)
                 .commit();
 
-        MessageNotifier.clearIncomingForAddress(context, "BB");
+        MessageNotifier.clearIncomingForAddress(context, "nuuekjzj");
 
         assertTrue(prefs.contains("ids_" + collidingId));
         assertEquals(storedAddress, prefs.getString("address_" + collidingId, ""));

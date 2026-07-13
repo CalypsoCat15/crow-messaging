@@ -1,5 +1,6 @@
 package com.crowmessenger.messages;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -60,5 +61,28 @@ public class AddressUtilTest {
         assertFalse(AddressUtil.isSendableSmsRecipient("15551234567,15557654321"));
         assertFalse(AddressUtil.isSendableSmsRecipient("group:15551234567|15557654321"));
         assertFalse(AddressUtil.isSendableSmsRecipient("no-number"));
+    }
+
+    @Test
+    public void sameConversationAddress_matchesSenderIdsIgnoringCaseAndWhitespace() {
+        assertTrue(AddressUtil.sameConversationAddress(" Crow Alerts ", "CROW ALERTS"));
+        assertFalse(AddressUtil.sameConversationAddress("Crow Alerts", "Crow Support"));
+        assertFalse(AddressUtil.sameConversationAddress("ACME2FA", "2"));
+        assertEquals("acme2fa", AddressUtil.stableKey(" ACME2FA "));
+        assertEquals("2", AddressUtil.stableKey("2"));
+    }
+
+    @Test
+    public void matchingConversationValues_handlePhonesSenderIdsAndExactGroups() {
+        Set<String> values = new HashSet<>(List.of(
+                "+1 (555) 123-4567",
+                "Crow Alerts",
+                "group:one|two"
+        ));
+
+        assertTrue(AddressUtil.containsMatchingConversationAddress(values, "5551234567"));
+        assertTrue(AddressUtil.containsMatchingConversationAddress(values, "CROW ALERTS"));
+        assertTrue(AddressUtil.containsMatchingConversationAddress(values, "group:one|two"));
+        assertFalse(AddressUtil.containsMatchingConversationAddress(values, "group:two|one"));
     }
 }
