@@ -267,6 +267,22 @@ public class SmsSenderTest {
     }
 
     @Test
+    public void handleSentResult_marksDeliveredTextNotSavedAfterProviderCrash() {
+        String sendId = "sent-provider-crash";
+        seedPending(sendId, "", System.currentTimeMillis());
+        TestSmsProvider.install();
+        TestSmsProvider.setInsertFailure(new IllegalStateException("provider unavailable"));
+
+        SmsSender.handleSentResult(context, sentIntent(sendId, 0), Activity.RESULT_OK);
+
+        assertTrue(pendingPrefs().contains("send_" + sendId + "_address"));
+        assertEquals(
+                ChatMessage.STATUS_NOT_SAVED,
+                pendingPrefs().getString("send_" + sendId + "_status", "")
+        );
+    }
+
+    @Test
     public void handleSentResult_marksMultipartFailureImmediately() {
         String sendId = "failed-multipart-send";
         seedPending(sendId, "", System.currentTimeMillis(), 2);

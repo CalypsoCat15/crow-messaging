@@ -190,6 +190,15 @@ public class SmsStoreTest {
     }
 
     @Test
+    public void saveSentSms_reportsUnexpectedProviderFailure() {
+        Context context = RuntimeEnvironment.getApplication();
+        TestSmsProvider.install();
+        TestSmsProvider.setInsertFailure(new IllegalStateException("provider unavailable"));
+
+        assertFalse(SmsStore.saveSentSms(context, "31354", "hello", 1000L));
+    }
+
+    @Test
     public void verifiedRead_fallsBackToShortCodeWhenThreadIdIsStale() {
         Context context = RuntimeEnvironment.getApplication();
         TestSmsProvider.install();

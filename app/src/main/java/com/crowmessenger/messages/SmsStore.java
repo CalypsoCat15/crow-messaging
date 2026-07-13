@@ -528,7 +528,7 @@ final class SmsStore {
         values.put(Telephony.Sms.TYPE, type);
         try {
             return context.getContentResolver().insert(uri, values) != null;
-        } catch (SecurityException | IllegalArgumentException ignored) {
+        } catch (RuntimeException ignored) {
             return false;
         }
     }

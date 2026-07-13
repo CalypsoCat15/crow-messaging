@@ -15,11 +15,13 @@ import java.util.List;
 final class TestSmsProvider extends ContentProvider {
     private static final List<Row> ROWS = new ArrayList<>();
     private static boolean queryUnavailable;
+    private static RuntimeException insertFailure;
     private static ContentValues lastInsertedValues;
 
     static void install() {
         ROWS.clear();
         queryUnavailable = false;
+        insertFailure = null;
         lastInsertedValues = null;
         ShadowContentResolver.registerProviderInternal("sms", new TestSmsProvider());
     }
@@ -30,6 +32,10 @@ final class TestSmsProvider extends ContentProvider {
 
     static ContentValues lastInsertedValues() {
         return lastInsertedValues;
+    }
+
+    static void setInsertFailure(RuntimeException failure) {
+        insertFailure = failure;
     }
 
     static void add(String id, String threadId, String address, boolean read, boolean seen) {
@@ -129,6 +135,9 @@ final class TestSmsProvider extends ContentProvider {
 
     @Override
     public Uri insert(Uri uri, ContentValues values) {
+        if (insertFailure != null) {
+            throw insertFailure;
+        }
         lastInsertedValues = new ContentValues(values);
         return Uri.withAppendedPath(uri, "inserted");
     }
