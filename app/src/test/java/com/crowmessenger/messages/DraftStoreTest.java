@@ -78,4 +78,24 @@ public class DraftStoreTest {
         assertEquals("updated", DraftStore.draft(context, "+1 (555) 123-4567"));
         assertEquals(1, DraftStore.drafts(context).size());
     }
+
+    @Test
+    public void collidingLegacyDraft_isNotReadSavedOverOrClearedByAnotherSender() {
+        String first = "xzgpfxmv";
+        String second = "nuuekjzj";
+        assertEquals(AddressUtil.stableId(first), AddressUtil.stableId(second));
+        String legacyKey = String.valueOf(AddressUtil.stableId(first));
+        context.getSharedPreferences("message_drafts", Context.MODE_PRIVATE)
+                .edit()
+                .putString(legacyKey, "first sender draft")
+                .putLong(legacyKey + ":date", 100L)
+                .putString(legacyKey + ":address", first)
+                .commit();
+
+        assertEquals("", DraftStore.draft(context, second));
+        DraftStore.save(context, second, "second sender draft");
+        assertTrue(DraftStore.clear(context, second));
+
+        assertEquals("first sender draft", DraftStore.draft(context, first));
+    }
 }

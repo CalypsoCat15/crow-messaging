@@ -23,7 +23,7 @@ final class DraftStore {
             return "";
         }
         SharedPreferences preferences = prefs(context);
-        String legacyKey = legacyKey(address);
+        String legacyKey = matchingLegacyKey(preferences, address);
         String draft = preferences.getString(key, "");
         if (hasDraftText(draft)) {
             if (TextUtils.isEmpty(preferences.getString(addressKey(key), ""))) {
@@ -153,15 +153,13 @@ final class DraftStore {
             return;
         }
         String draft = body == null ? "" : body;
-        String legacyKey = legacyKey(address);
         SharedPreferences preferences = prefs(context);
+        String legacyKey = matchingLegacyKey(preferences, address);
         SharedPreferences.Editor editor = preferences.edit()
                 .putString(key, draft)
                 .putLong(dateKey(key), System.currentTimeMillis())
-                .putString(addressKey(key), address)
-                .remove(legacyKey)
-                .remove(dateKey(legacyKey))
-                .remove(addressKey(legacyKey));
+                .putString(addressKey(key), address);
+        removeLegacyDraftKeys(editor, legacyKey);
         removeEquivalentDraftKeys(preferences, editor, address, key);
         editor.apply();
     }
@@ -171,8 +169,8 @@ final class DraftStore {
         if (TextUtils.isEmpty(key)) {
             return false;
         }
-        String legacyKey = legacyKey(address);
         SharedPreferences preferences = prefs(context);
+        String legacyKey = matchingLegacyKey(preferences, address);
         boolean hadDraft = hasDraftText(preferences.getString(key, ""))
                 || hasDraftText(preferences.getString(legacyKey, ""));
         for (String matchingKey : matchingDraftBodyKeys(preferences, address)) {
@@ -186,6 +184,26 @@ final class DraftStore {
 
     private static SharedPreferences prefs(Context context) {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    private static String matchingLegacyKey(SharedPreferences preferences, String address) {
+        String candidate = legacyKey(address);
+        if (TextUtils.isEmpty(candidate)) {
+            return "";
+        }
+        String storedAddress = preferences.getString(addressKey(candidate), "");
+        return TextUtils.isEmpty(storedAddress)
+                || AddressUtil.sameConversationAddress(storedAddress, address)
+                ? candidate
+                : "";
+    }
+
+    private static void removeLegacyDraftKeys(SharedPreferences.Editor editor, String legacyKey) {
+        if (!TextUtils.isEmpty(legacyKey)) {
+            editor.remove(legacyKey)
+                    .remove(dateKey(legacyKey))
+                    .remove(addressKey(legacyKey));
+        }
     }
 
     private static boolean hasDraftText(String body) {
