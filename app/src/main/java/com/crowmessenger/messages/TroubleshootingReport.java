@@ -44,7 +44,11 @@ final class TroubleshootingReport {
         return MmsDebugStore.redactPhoneNumbers(events)
                 .replaceAll("\\*\\*\\*\\d{4}", "***")
                 .replaceAll("(?i)https?://\\S+", "[link removed]")
-                .replaceAll("(?i)file=[^\\s,]+", "file=[redacted]");
+                .replaceAll("(?i)file=[^\\s,]+", "file=[redacted]")
+                .replaceAll("(?im)(sender=).*?(?=\\s+(?:url|imageBytes|bytes|subId|txId|file|path|http|responseBytes|textLength|raw|saved)=|,|$)", "$1***")
+                .replaceAll("(?im)(Starting MMS download for ).*?(?= on subId=|$)", "$1***")
+                .replaceAll("(?im)(path=)[^,\\r\\n]+", "$1[redacted]")
+                .replaceAll("(?im)(host=)[^,\\r\\n]+", "$1[redacted]");
     }
 
     private static String versionName(Context context) {

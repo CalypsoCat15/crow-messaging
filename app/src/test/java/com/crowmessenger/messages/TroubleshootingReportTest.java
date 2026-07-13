@@ -39,6 +39,22 @@ public class TroubleshootingReportTest {
     }
 
     @Test
+    public void privateMmsEvents_redactsLegacySenderIdsEmailsAndUrlParts() {
+        String events = "sender=CROW ALERTS, path=/private/account-token, host=carrier.example\n"
+                + "sender=private@example.com bytes=42\n"
+                + "Starting MMS download for CROW ALERTS on subId=1";
+
+        String privateEvents = TroubleshootingReport.privateMmsEvents(events);
+
+        assertFalse(privateEvents.contains("CROW ALERTS"));
+        assertFalse(privateEvents.contains("private@example.com"));
+        assertFalse(privateEvents.contains("account-token"));
+        assertFalse(privateEvents.contains("carrier.example"));
+        assertTrue(privateEvents.contains("bytes=42"));
+        assertTrue(privateEvents.contains("subId=1"));
+    }
+
+    @Test
     public void create_includesPrivacyStatementAndNoStoredMessageBody() {
         Context context = RuntimeEnvironment.getApplication();
         context.getSharedPreferences("local_mms", Context.MODE_PRIVATE).edit().clear().commit();

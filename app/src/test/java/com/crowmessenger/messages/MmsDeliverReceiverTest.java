@@ -52,6 +52,20 @@ public class MmsDeliverReceiverTest {
     }
 
     @Test
+    public void diagnosticDescriptions_doNotExposeSenderOrPrivateUrlParts() {
+        String privateUrl = "https://carrier.example/private/account-token?message=secret";
+
+        String description = MmsDeliverReceiver.describeUrl(privateUrl);
+
+        assertFalse(description.contains("carrier.example"));
+        assertFalse(description.contains("account-token"));
+        assertFalse(description.contains("secret"));
+        assertEquals("phone", MmsDeliverReceiver.describeSender("15551234567"));
+        assertEquals("email", MmsDeliverReceiver.describeSender("private@example.com"));
+        assertEquals("sender-id", MmsDeliverReceiver.describeSender("CROW ALERTS"));
+    }
+
+    @Test
     public void cleanupFailedDownloadStart_clearsPendingDownloadAndFile() throws Exception {
         File downloadDir = MmsFiles.appFileDir(context, MmsFiles.DOWNLOADS_DIR);
         File pduFile = new File(downloadDir, "failed-start.pdu");

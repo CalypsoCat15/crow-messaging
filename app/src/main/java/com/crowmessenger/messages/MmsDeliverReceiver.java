@@ -37,7 +37,7 @@ public class MmsDeliverReceiver extends BroadcastReceiver {
                     + ", subId=" + subscriptionLabel(subscriptionId)
                     + ", txId=" + describeTransactionId(notice.transactionId)
                     + ", url=" + describeUrl(downloadUrl)
-                    + ", sender=" + address);
+                    + ", senderType=" + describeSender(address));
             if (!TextUtils.isEmpty(downloadUrl)) {
                 startMmsDownload(context, id, downloadUrl, conversationAddress, subscriptionId);
             } else {
@@ -65,7 +65,8 @@ public class MmsDeliverReceiver extends BroadcastReceiver {
     private void startMmsDownload(Context context, String id, String downloadUrl, String address, int subscriptionId) {
         File pduFile = null;
         try {
-            MmsDebugStore.record(context, "Starting MMS download for " + address + " on subId=" + subscriptionLabel(subscriptionId));
+            MmsDebugStore.record(context, "Starting MMS download. senderType=" + describeSender(address)
+                    + ", subId=" + subscriptionLabel(subscriptionId));
             File outputDir = MmsFiles.appFileDir(context, MmsFiles.DOWNLOADS_DIR);
             pduFile = new File(outputDir, id + ".pdu");
             if (!LocalMmsStore.savePending(context, id, address, pduFile.getAbsolutePath(), downloadUrl, subscriptionId)) {
@@ -113,16 +114,29 @@ public class MmsDeliverReceiver extends BroadcastReceiver {
         }
     }
 
-    private String describeUrl(String downloadUrl) {
+    static String describeUrl(String downloadUrl) {
         if (TextUtils.isEmpty(downloadUrl)) {
             return "missing";
         }
         Uri uri = Uri.parse(downloadUrl);
         String query = uri.getEncodedQuery();
-        return "host=" + uri.getHost()
-                + ", path=" + uri.getPath()
+        String host = uri.getHost();
+        String path = uri.getPath();
+        return "present, scheme=" + (TextUtils.isEmpty(uri.getScheme()) ? "missing" : uri.getScheme())
+                + ", hostLength=" + (host == null ? 0 : host.length())
+                + ", pathLength=" + (path == null ? 0 : path.length())
                 + ", queryLength=" + (query == null ? 0 : query.length())
                 + ", length=" + downloadUrl.length();
+    }
+
+    static String describeSender(String sender) {
+        if (TextUtils.isEmpty(sender)) {
+            return "missing";
+        }
+        if (AddressUtil.isSendableSmsRecipient(sender)) {
+            return "phone";
+        }
+        return sender.indexOf('@') > 0 ? "email" : "sender-id";
     }
 
     private String describeTransactionId(String transactionId) {
