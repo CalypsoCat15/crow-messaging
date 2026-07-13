@@ -4208,7 +4208,7 @@ public class MainActivity extends Activity {
     }
 
     private void showContactQuickActions(Conversation conversation) {
-        if (LocalMmsStore.isGroupAddress(conversation.address)) {
+        if (!supportsPhoneActions(conversation.address)) {
             showConversationInfoPage(conversation);
             return;
         }
@@ -4245,7 +4245,7 @@ public class MainActivity extends Activity {
     }
 
     private Uri contactUriForAddress(String address) {
-        if (TextUtils.isEmpty(AddressUtil.digits(address))) {
+        if (!supportsPhoneActions(address)) {
             return null;
         }
         Uri lookup = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(address));
@@ -4269,7 +4269,7 @@ public class MainActivity extends Activity {
     }
 
     private void callContact(String address) {
-        if (TextUtils.isEmpty(AddressUtil.digits(address))) {
+        if (!supportsPhoneActions(address)) {
             Toast.makeText(this, "No phone number for this conversation.", Toast.LENGTH_SHORT).show();
             return;
         }
@@ -5336,6 +5336,10 @@ public class MainActivity extends Activity {
             scrollThreadToBottomOnResume = false;
             refreshActiveThreadAsync(shouldOpenAtBottom);
         }
+    }
+
+    static boolean supportsPhoneActions(String address) {
+        return AddressUtil.hasSinglePhoneAddress(address);
     }
 
     static boolean shouldSkipInitialRefresh(boolean firstResume, boolean pendingMessageRefresh) {

@@ -291,6 +291,15 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void phoneActions_allowNumbersButRejectSenderIdsAndGroups() {
+        assertTrue(MainActivity.supportsPhoneActions("+1 (555) 123-4567"));
+        assertTrue(MainActivity.supportsPhoneActions("31354"));
+        assertFalse(MainActivity.supportsPhoneActions("ACME2FA"));
+        assertFalse(MainActivity.supportsPhoneActions("Crow Alerts"));
+        assertFalse(MainActivity.supportsPhoneActions("group:15551234567|15557654321"));
+    }
+
+    @Test
     public void scaledImageHeight_preservesAspectRatioWithinMessageBounds() {
         assertEquals(300, MainActivity.scaledImageHeight(300, 160, 360, 1000, 1000));
         assertEquals(160, MainActivity.scaledImageHeight(300, 160, 360, 2000, 500));
