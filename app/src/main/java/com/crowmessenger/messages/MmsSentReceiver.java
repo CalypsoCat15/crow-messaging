@@ -49,14 +49,20 @@ public final class MmsSentReceiver extends BroadcastReceiver {
         }
         String address = intent.getStringExtra(EXTRA_ADDRESS);
         String localMessageId = intent.getStringExtra(EXTRA_LOCAL_MESSAGE_ID);
+        String imageUri = intent.getStringExtra(EXTRA_IMAGE_URI);
+        boolean pictureMessage = !TextUtils.isEmpty(imageUri);
         boolean markedFailed;
         if (!TextUtils.isEmpty(localMessageId)) {
             markedFailed = LocalMmsStore.markSentMessageFailed(context, localMessageId, address);
             if (markedFailed) {
-                MessageNotifier.showSendFailed(context, address, "Group text could not be sent by the carrier.");
+                if (pictureMessage) {
+                    MessageNotifier.showPictureSendFailed(context, address, "Picture message could not be sent by the carrier.");
+                } else {
+                    MessageNotifier.showSendFailed(context, address, "Group text could not be sent by the carrier.");
+                }
             }
         } else {
-            markedFailed = LocalMmsStore.markSentImageFailed(context, address, intent.getStringExtra(EXTRA_IMAGE_URI));
+            markedFailed = LocalMmsStore.markSentImageFailed(context, address, imageUri);
             if (markedFailed) {
                 MessageNotifier.showPictureSendFailed(context, address, "Picture message could not be sent by the carrier.");
             }

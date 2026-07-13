@@ -39,6 +39,17 @@ final class MmsImageSender {
     }
 
     static long sendAndRecord(Context context, String conversationAddress, List<String> recipients, String caption, Uri sourceImageUri) throws SmsSender.SendException {
+        return sendAndRecord(context, conversationAddress, recipients, caption, sourceImageUri, null);
+    }
+
+    static long sendAndRecord(
+            Context context,
+            String conversationAddress,
+            List<String> recipients,
+            String caption,
+            Uri sourceImageUri,
+            MmsCarrierGateway gateway
+    ) throws SmsSender.SendException {
         if (TextUtils.isEmpty(conversationAddress)) {
             throw new SmsSender.SendException("No recipient was selected.");
         }
@@ -49,9 +60,19 @@ final class MmsImageSender {
         if (sourceImageUri == null) {
             throw new SmsSender.SendException("No picture was selected.");
         }
-        SmsManager smsManager = context.getSystemService(SmsManager.class);
-        if (smsManager == null) {
-            throw new SmsSender.SendException("Picture messaging is not available on this phone right now.");
+        MmsCarrierGateway carrierGateway = gateway;
+        if (carrierGateway == null) {
+            SmsManager smsManager = context.getSystemService(SmsManager.class);
+            if (smsManager == null) {
+                throw new SmsSender.SendException("Picture messaging is not available on this phone right now.");
+            }
+            carrierGateway = (sendContext, pduUri, sentIntent) -> smsManager.sendMultimediaMessage(
+                    sendContext,
+                    pduUri,
+                    null,
+                    null,
+                    sentIntent
+            );
         }
 
         byte[] imageBytes = preparedJpeg(context, sourceImageUri);
@@ -72,23 +93,20 @@ final class MmsImageSender {
             throw new SmsSender.SendException("Picture message could not be prepared.", ex);
         }
 
+        String localImageUri = Uri.fromFile(localImage).toString();
         Uri pduUri = Uri.parse("content://" + MmsFileProvider.AUTHORITY + "/" + outgoingPdu.getName());
+        PendingIntent sentIntent;
         try {
-            smsManager.sendMultimediaMessage(
+            sentIntent = PendingIntent.getBroadcast(
                     context,
-                    pduUri,
-                    null,
-                    null,
-                    PendingIntent.getBroadcast(
-                            context,
-                            AddressUtil.stableId(id),
-                            new Intent(context, MmsSentReceiver.class)
-                                    .setAction(MmsSentReceiver.ACTION_MMS_SENT)
-                                    .putExtra(MmsSentReceiver.EXTRA_PDU_NAME, outgoingPdu.getName())
-                                    .putExtra(MmsSentReceiver.EXTRA_ADDRESS, conversationAddress)
-                                    .putExtra(MmsSentReceiver.EXTRA_IMAGE_URI, Uri.fromFile(localImage).toString()),
-                            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-                    )
+                    AddressUtil.stableId(id),
+                    new Intent(context, MmsSentReceiver.class)
+                            .setAction(MmsSentReceiver.ACTION_MMS_SENT)
+                            .putExtra(MmsSentReceiver.EXTRA_PDU_NAME, outgoingPdu.getName())
+                            .putExtra(MmsSentReceiver.EXTRA_ADDRESS, conversationAddress)
+                            .putExtra(MmsSentReceiver.EXTRA_IMAGE_URI, localImageUri)
+                            .putExtra(MmsSentReceiver.EXTRA_LOCAL_MESSAGE_ID, id),
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
         } catch (RuntimeException ex) {
             MmsFiles.deleteAppFile(context, MmsFiles.OUTGOING_DIR, outgoingPdu.getAbsolutePath());
@@ -98,8 +116,29 @@ final class MmsImageSender {
         }
 
         long sentAt = System.currentTimeMillis();
-        LocalMmsStore.saveSentImage(context, conversationAddress, caption, Uri.fromFile(localImage).toString(), sentAt);
+        if (!LocalMmsStore.saveSentImage(context, id, conversationAddress, caption, localImageUri, sentAt)) {
+            rollbackPreparedMessage(context, id, conversationAddress, outgoingPdu, localImage);
+            throw new SmsSender.SendException("Picture message could not be saved before sending.");
+        }
+        try {
+            carrierGateway.send(context, pduUri, sentIntent);
+        } catch (RuntimeException ex) {
+            rollbackPreparedMessage(context, id, conversationAddress, outgoingPdu, localImage);
+            String detail = ex.getMessage();
+            throw new SmsSender.SendException(TextUtils.isEmpty(detail) ? "Android could not send the picture." : detail, ex);
+        }
         return sentAt;
+    }
+
+    private static void rollbackPreparedMessage(Context context, String id, String address, File outgoingPdu, File localImage) {
+        boolean removed = LocalMmsStore.rollbackSentMessage(context, id, address);
+        MmsFiles.deleteAppFile(context, MmsFiles.OUTGOING_DIR, outgoingPdu.getAbsolutePath());
+        if (!removed) {
+            LocalMmsStore.markSentMessageFailed(context, id, address);
+            if (LocalMmsStore.failedMessageForRetry(context, id) == null) {
+                MmsFiles.deleteAppFile(context, MmsFiles.IMAGES_DIR, localImage.getAbsolutePath());
+            }
+        }
     }
 
     static List<String> recipientsForAddress(String address, java.util.Set<String> ownNumbers) throws SmsSender.SendException {

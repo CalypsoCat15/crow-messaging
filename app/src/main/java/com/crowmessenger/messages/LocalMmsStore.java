@@ -142,22 +142,26 @@ final class LocalMmsStore {
         saveMessage(context, address, "", body, imageUri, dateMillis, true);
     }
 
-    static void saveSentText(Context context, String id, String address, String body, long dateMillis) {
-        saveMessage(context, id, address, "", body, "", dateMillis, true);
+    static boolean saveSentImage(Context context, String id, String address, String body, String imageUri, long dateMillis) {
+        return saveMessage(context, id, address, "", body, imageUri, dateMillis, true, true);
+    }
+
+    static boolean saveSentText(Context context, String id, String address, String body, long dateMillis) {
+        return saveMessage(context, id, address, "", body, "", dateMillis, true, true);
     }
 
     static synchronized boolean markSentMessageFailed(Context context, String id, String address) {
         if (TextUtils.isEmpty(id) || TextUtils.isEmpty(address)) {
             return false;
         }
+        String normalizedAddress = normalizedConversationAddress(address);
         SharedPreferences prefs = prefs(context);
         if (!savedIds(prefs).contains(id)
                 || !isOutgoing(prefs, id)
-                || !AddressUtil.sameConversationAddress(address, prefs.getString(addressKey(id), ""))) {
+                || !AddressUtil.sameConversationAddress(normalizedAddress, prefs.getString(addressKey(id), ""))) {
             return false;
         }
-        prefs.edit().putString(statusKey(id), ChatMessage.STATUS_FAILED).apply();
-        return true;
+        return prefs.edit().putString(statusKey(id), ChatMessage.STATUS_FAILED).commit();
     }
 
     static synchronized boolean markSentImageFailed(Context context, String address, String imageUri) {
@@ -226,6 +230,29 @@ final class LocalMmsStore {
         SharedPreferences.Editor editor = prefs.edit();
         removeMessage(editor, id);
         editor.putStringSet(KEY_IDS, keptIds).apply();
+        return true;
+    }
+
+    static synchronized boolean rollbackSentMessage(Context context, String id, String address) {
+        if (TextUtils.isEmpty(id) || TextUtils.isEmpty(address)) {
+            return false;
+        }
+        String normalizedAddress = normalizedConversationAddress(address);
+        SharedPreferences prefs = prefs(context);
+        Set<String> keptIds = savedIds(prefs);
+        if (!keptIds.contains(id)
+                || !isOutgoing(prefs, id)
+                || !AddressUtil.sameConversationAddress(normalizedAddress, prefs.getString(addressKey(id), ""))) {
+            return false;
+        }
+        String imageUri = prefs.getString(imageKey(id), "");
+        keptIds.remove(id);
+        SharedPreferences.Editor editor = prefs.edit();
+        removeMessage(editor, id);
+        if (!editor.putStringSet(KEY_IDS, keptIds).commit()) {
+            return false;
+        }
+        deleteStoredImage(context, imageUri);
         return true;
     }
 
@@ -402,10 +429,10 @@ final class LocalMmsStore {
     }
 
     private static synchronized void saveMessage(Context context, String address, String senderAddress, String body, String imageUri, long dateMillis, boolean outgoing) {
-        saveMessage(context, "", address, senderAddress, body, imageUri, dateMillis, outgoing);
+        saveMessage(context, "", address, senderAddress, body, imageUri, dateMillis, outgoing, false);
     }
 
-    private static synchronized void saveMessage(
+    private static synchronized boolean saveMessage(
             Context context,
             String requestedId,
             String address,
@@ -413,7 +440,8 @@ final class LocalMmsStore {
             String body,
             String imageUri,
             long dateMillis,
-            boolean outgoing
+            boolean outgoing,
+            boolean durable
     ) {
         String cleanAddress = normalizedConversationAddress(address);
         String cleanSenderAddress = normalizedParticipantAddress(senderAddress);
@@ -426,13 +454,13 @@ final class LocalMmsStore {
             cleanBody = PICTURE_MESSAGE;
         }
         if (TextUtils.isEmpty(cleanAddress) || (TextUtils.isEmpty(cleanBody) && TextUtils.isEmpty(cleanImageUri))) {
-            return;
+            return false;
         }
         String id = TextUtils.isEmpty(requestedId) ? dateMillis + "-" + System.nanoTime() : requestedId;
         SharedPreferences prefs = prefs(context);
         Set<String> ids = savedIds(prefs);
         ids.add(id);
-        prefs.edit()
+        SharedPreferences.Editor editor = prefs.edit()
                 .putStringSet(KEY_IDS, ids)
                 .putString(addressKey(id), cleanAddress)
                 .putString(senderKey(id), cleanSenderAddress)
@@ -440,8 +468,12 @@ final class LocalMmsStore {
                 .putString(imageKey(id), cleanImageUri)
                 .putLong(dateKey(id), dateMillis)
                 .putBoolean(readKey(id), outgoing)
-                .putBoolean(outgoingKey(id), outgoing)
-                .apply();
+                .putBoolean(outgoingKey(id), outgoing);
+        if (durable) {
+            return editor.commit();
+        }
+        editor.apply();
+        return true;
     }
 
     private static String normalizedConversationAddress(String address) {

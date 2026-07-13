@@ -157,6 +157,90 @@ public class LocalMmsStoreTest {
     }
 
     @Test
+    public void sentImageWithExplicitId_tracksExactFailureWhenImageUrisMatch() {
+        String imageUri = "file:///tmp/shared-sent-image.jpg";
+        assertTrue(LocalMmsStore.saveSentImage(
+                context,
+                "first-picture-id",
+                "15551234567",
+                "first",
+                imageUri,
+                1000L
+        ));
+        assertTrue(LocalMmsStore.saveSentImage(
+                context,
+                "second-picture-id",
+                "15551234567",
+                "second",
+                imageUri,
+                2000L
+        ));
+
+        assertTrue(LocalMmsStore.markSentMessageFailed(
+                context,
+                "second-picture-id",
+                "+1 (555) 123-4567"
+        ));
+
+        List<ChatMessage> messages = LocalMmsStore.loadForAddress(context, "15551234567");
+        assertEquals(2, messages.size());
+        assertEquals("first-picture-id", messages.get(0).localStatusId);
+        assertEquals("", messages.get(0).status);
+        assertEquals("second-picture-id", messages.get(1).localStatusId);
+        assertEquals(ChatMessage.STATUS_FAILED, messages.get(1).status);
+    }
+
+    @Test
+    public void rollbackSentMessage_removesOnlyExactRowAndItsOwnedImage() throws Exception {
+        File imageDirectory = MmsFiles.appFileDir(context, MmsFiles.IMAGES_DIR);
+        File firstImage = new File(imageDirectory, "rollback-first.jpg");
+        File secondImage = new File(imageDirectory, "rollback-second.jpg");
+        Files.write(firstImage.toPath(), new byte[] { 1, 2, 3 });
+        Files.write(secondImage.toPath(), new byte[] { 4, 5, 6 });
+        assertTrue(LocalMmsStore.saveSentImage(
+                context,
+                "rollback-first-id",
+                "15551234567",
+                "first",
+                Uri.fromFile(firstImage).toString(),
+                1000L
+        ));
+        assertTrue(LocalMmsStore.saveSentImage(
+                context,
+                "rollback-second-id",
+                "15551234567",
+                "second",
+                Uri.fromFile(secondImage).toString(),
+                2000L
+        ));
+
+        assertTrue(LocalMmsStore.rollbackSentMessage(
+                context,
+                "rollback-first-id",
+                "+1 (555) 123-4567"
+        ));
+
+        List<ChatMessage> messages = LocalMmsStore.loadForAddress(context, "15551234567");
+        assertEquals(1, messages.size());
+        assertEquals("rollback-second-id", messages.get(0).localStatusId);
+        assertFalse(firstImage.exists());
+        assertTrue(secondImage.exists());
+        assertFalse(LocalMmsStore.rollbackSentMessage(
+                context,
+                "rollback-second-id",
+                "15550000000"
+        ));
+        assertTrue(secondImage.exists());
+
+        assertTrue(LocalMmsStore.rollbackSentMessage(
+                context,
+                "rollback-second-id",
+                "15551234567"
+        ));
+        assertFalse(secondImage.exists());
+    }
+
+    @Test
     public void markSentImageFailed_updatesOnlyMatchingOutgoingPicture() {
         LocalMmsStore.saveSentImage(context, "15551234567", "first", "file:///tmp/first.jpg", 1000L);
         LocalMmsStore.saveSentImage(context, "15551234567", "second", "file:///tmp/second.jpg", 2000L);

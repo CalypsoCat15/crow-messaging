@@ -32,6 +32,16 @@ final class MmsTextSender {
             List<String> recipients,
             String body
     ) throws SmsSender.SendException {
+        return sendAndRecord(context, conversationAddress, recipients, body, null);
+    }
+
+    static long sendAndRecord(
+            Context context,
+            String conversationAddress,
+            List<String> recipients,
+            String body,
+            MmsCarrierGateway gateway
+    ) throws SmsSender.SendException {
         if (!LocalMmsStore.isGroupAddress(conversationAddress)) {
             throw new SmsSender.SendException("Group text needs a group conversation.");
         }
@@ -43,30 +53,35 @@ final class MmsTextSender {
         if (TextUtils.isEmpty(cleanBody)) {
             throw new SmsSender.SendException("Message is empty.");
         }
-        SmsManager smsManager = context.getSystemService(SmsManager.class);
-        if (smsManager == null) {
-            throw new SmsSender.SendException("Group messaging is not available on this phone right now.");
+        MmsCarrierGateway carrierGateway = gateway;
+        if (carrierGateway == null) {
+            SmsManager smsManager = context.getSystemService(SmsManager.class);
+            if (smsManager == null) {
+                throw new SmsSender.SendException("Group messaging is not available on this phone right now.");
+            }
+            carrierGateway = (sendContext, pduUri, sentIntent) -> smsManager.sendMultimediaMessage(
+                    sendContext,
+                    pduUri,
+                    null,
+                    null,
+                    sentIntent
+            );
         }
 
         String id = UUID.randomUUID().toString();
         File outgoingPdu = writePdu(context, id, normalizedRecipients, cleanBody);
         Uri pduUri = Uri.parse("content://" + MmsFileProvider.AUTHORITY + "/" + outgoingPdu.getName());
+        PendingIntent sentIntent;
         try {
-            smsManager.sendMultimediaMessage(
+            sentIntent = PendingIntent.getBroadcast(
                     context,
-                    pduUri,
-                    null,
-                    null,
-                    PendingIntent.getBroadcast(
-                            context,
-                            AddressUtil.stableId(id),
-                            new Intent(context, MmsSentReceiver.class)
-                                    .setAction(MmsSentReceiver.ACTION_MMS_SENT)
-                                    .putExtra(MmsSentReceiver.EXTRA_PDU_NAME, outgoingPdu.getName())
-                                    .putExtra(MmsSentReceiver.EXTRA_ADDRESS, conversationAddress)
-                                    .putExtra(MmsSentReceiver.EXTRA_LOCAL_MESSAGE_ID, id),
-                            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-                    )
+                    AddressUtil.stableId(id),
+                    new Intent(context, MmsSentReceiver.class)
+                            .setAction(MmsSentReceiver.ACTION_MMS_SENT)
+                            .putExtra(MmsSentReceiver.EXTRA_PDU_NAME, outgoingPdu.getName())
+                            .putExtra(MmsSentReceiver.EXTRA_ADDRESS, conversationAddress)
+                            .putExtra(MmsSentReceiver.EXTRA_LOCAL_MESSAGE_ID, id),
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
         } catch (RuntimeException ex) {
             MmsFiles.deleteAppFile(context, MmsFiles.OUTGOING_DIR, outgoingPdu.getAbsolutePath());
@@ -75,8 +90,25 @@ final class MmsTextSender {
         }
 
         long sentAt = System.currentTimeMillis();
-        LocalMmsStore.saveSentText(context, id, conversationAddress, cleanBody, sentAt);
+        if (!LocalMmsStore.saveSentText(context, id, conversationAddress, cleanBody, sentAt)) {
+            rollbackPreparedMessage(context, id, conversationAddress, outgoingPdu);
+            throw new SmsSender.SendException("Group text could not be saved before sending.");
+        }
+        try {
+            carrierGateway.send(context, pduUri, sentIntent);
+        } catch (RuntimeException ex) {
+            rollbackPreparedMessage(context, id, conversationAddress, outgoingPdu);
+            String detail = ex.getMessage();
+            throw new SmsSender.SendException(TextUtils.isEmpty(detail) ? "Android could not send the group text." : detail, ex);
+        }
         return sentAt;
+    }
+
+    private static void rollbackPreparedMessage(Context context, String id, String address, File outgoingPdu) {
+        if (!LocalMmsStore.rollbackSentMessage(context, id, address)) {
+            LocalMmsStore.markSentMessageFailed(context, id, address);
+        }
+        MmsFiles.deleteAppFile(context, MmsFiles.OUTGOING_DIR, outgoingPdu.getAbsolutePath());
     }
 
     static List<String> normalizedRecipients(List<String> recipients) {
