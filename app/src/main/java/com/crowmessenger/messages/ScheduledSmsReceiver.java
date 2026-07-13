@@ -97,6 +97,12 @@ public class ScheduledSmsReceiver extends BroadcastReceiver {
         }
     }
 
+    static void deleteAndCancel(Context context, String id) {
+        // Delete durably first. A stale alarm is safe because its receiver will find no saved message.
+        ScheduledMessageStore.delete(context, id);
+        cancel(context, id);
+    }
+
     static void scheduleAll(Context context) {
         SmsSender.cleanupStalePendingSends(context);
         long now = System.currentTimeMillis();

@@ -190,6 +190,24 @@ public class SmsSenderTest {
     }
 
     @Test
+    public void deleteAndCancel_makesLateScheduledAlarmHarmless() {
+        ScheduledMessageStore.ScheduledMessage scheduled = ScheduledMessageStore.save(
+                context,
+                "15551234567",
+                "do not send",
+                System.currentTimeMillis() + 60000L
+        );
+
+        ScheduledSmsReceiver.deleteAndCancel(context, scheduled.id);
+        ScheduledSmsReceiver.handleIntent(context, new Intent(context, ScheduledSmsReceiver.class)
+                .setAction(ScheduledSmsReceiver.ACTION_SEND_SCHEDULED)
+                .putExtra("scheduled_message_id", scheduled.id));
+
+        assertNull(ScheduledMessageStore.find(context, scheduled.id));
+        assertFalse(SmsSender.hasPendingScheduled(context, scheduled.id));
+    }
+
+    @Test
     public void handleSentResult_ignoresDuplicateMultipartCallback() {
         String sendId = "multipart-send";
         seedPending(sendId, "", System.currentTimeMillis(), 2);

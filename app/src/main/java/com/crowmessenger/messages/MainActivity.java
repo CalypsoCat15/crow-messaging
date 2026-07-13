@@ -4144,8 +4144,7 @@ public class MainActivity extends Activity {
         }
 
         Button cancel = actionButton(message.failed() ? "Remove failed text" : "Cancel scheduled text", v -> {
-            ScheduledSmsReceiver.cancel(this, message.id);
-            ScheduledMessageStore.delete(this, message.id);
+            ScheduledSmsReceiver.deleteAndCancel(this, message.id);
             Toast.makeText(this, message.failed() ? "Failed text removed." : "Scheduled text canceled.", Toast.LENGTH_SHORT).show();
             showScheduledMessagesPage(conversation);
         });
