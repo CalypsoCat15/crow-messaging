@@ -68,6 +68,31 @@ final class MmsFiles {
         deleteAppFile(context, dirName, uri.getPath());
     }
 
+    static File cameraFileForUri(Context context, Uri uri) {
+        if (context == null
+                || uri == null
+                || !"content".equals(uri.getScheme())
+                || !CAMERA_AUTHORITY.equals(uri.getAuthority())
+                || uri.getPathSegments().size() != 2
+                || !"camera".equals(uri.getPathSegments().get(0))
+                || TextUtils.isEmpty(uri.getLastPathSegment())) {
+            return null;
+        }
+        File file = new File(appFileDirPath(context, CAMERA_DIR), uri.getLastPathSegment());
+        try {
+            return isAppFile(context, CAMERA_DIR, file) ? file : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    static void deleteCameraFileUri(Context context, Uri uri) {
+        File file = cameraFileForUri(context, uri);
+        if (file != null) {
+            deleteAppFile(context, CAMERA_DIR, file.getAbsolutePath());
+        }
+    }
+
     static int cleanupStaleTemporaryFiles(Context context) {
         long now = System.currentTimeMillis();
         return deleteFilesOlderThan(context, OUTGOING_DIR, ".pdu", now - STALE_PDU_AGE_MILLIS)

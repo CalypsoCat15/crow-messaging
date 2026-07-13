@@ -113,6 +113,63 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void mergeRemainingImageUris_keepsFailedBatchAheadOfNewUniqueAttachments() {
+        Uri failed = Uri.parse("content://gallery/failed");
+        Uri later = Uri.parse("content://gallery/later");
+        Uri newlyAdded = Uri.parse("content://gallery/new");
+
+        java.util.List<Uri> merged = MainActivity.mergeRemainingImageUris(
+                java.util.List.of(failed, later),
+                java.util.List.of(newlyAdded, failed)
+        );
+
+        assertEquals(java.util.List.of(failed, later, newlyAdded), merged);
+    }
+
+    @Test
+    public void reconcileCompletedImageUris_removesReparsedShareAndRestoresOnlyUnsentTail() {
+        Uri sent = Uri.parse("content://gallery/sent");
+        Uri failed = Uri.parse("content://gallery/failed");
+        Uri unrelated = Uri.parse("content://gallery/unrelated");
+
+        java.util.List<Uri> reconciled = MainActivity.reconcileCompletedImageUris(
+                java.util.List.of(sent, failed),
+                java.util.List.of(failed),
+                java.util.List.of(sent, failed, unrelated)
+        );
+
+        assertEquals(java.util.List.of(failed, unrelated), reconciled);
+    }
+
+    @Test
+    public void restoredComposeRecipientAddresses_recoversDirectShareRecipientAfterPartialFailure() {
+        assertEquals(
+                java.util.List.of("15551234567"),
+                MainActivity.restoredComposeRecipientAddresses(
+                        "15551234567",
+                        null,
+                        java.util.Collections.emptyList()
+                )
+        );
+        assertEquals(
+                java.util.List.of("15550100001", "15550100002"),
+                MainActivity.restoredComposeRecipientAddresses(
+                        "group:15550100001|15550100002",
+                        java.util.List.of("15550100001", "15550100002"),
+                        java.util.Collections.emptyList()
+                )
+        );
+    }
+
+    @Test
+    public void shouldHandleImageSendCompletion_waitsForAResumedActivity() {
+        assertTrue(MainActivity.shouldHandleImageSendCompletion(true, false, false));
+        assertFalse(MainActivity.shouldHandleImageSendCompletion(false, false, false));
+        assertFalse(MainActivity.shouldHandleImageSendCompletion(true, true, false));
+        assertFalse(MainActivity.shouldHandleImageSendCompletion(true, false, true));
+    }
+
+    @Test
     public void selectedImageUris_readsAndDeduplicatesPhotoPickerClipData() {
         Uri first = Uri.parse("content://gallery/picture/46");
         Uri second = Uri.parse("content://gallery/picture/47");

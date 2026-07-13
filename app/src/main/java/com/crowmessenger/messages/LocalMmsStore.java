@@ -210,10 +210,13 @@ final class LocalMmsStore {
         if (!keptIds.remove(id)) {
             return false;
         }
-        deleteStoredImage(context, retry.imageUri);
         SharedPreferences.Editor editor = prefs.edit();
         removeMessage(editor, id);
-        editor.putStringSet(KEY_IDS, keptIds).apply();
+        editor.putStringSet(KEY_IDS, keptIds);
+        if (!editor.commit()) {
+            return false;
+        }
+        deleteStoredImage(context, retry.imageUri);
         return true;
     }
 

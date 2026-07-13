@@ -133,6 +133,8 @@ public class MainActivity extends Activity {
     private static final long DRAFT_SAVE_DELAY_MILLIS = 250L;
     private static final long SEARCH_DEBOUNCE_MILLIS = 180L;
     private static final long INBOX_REFRESH_THROTTLE_MILLIS = 15_000L;
+    private static final String IMAGE_SEND_JOB_KEY = "crow-main-picture-send";
+    private static volatile ImageSendSession retainedImageSendSession;
     private static final AtomicBoolean STARTUP_MAINTENANCE_RUNNING = new AtomicBoolean();
     private static final int[] BOTTOM_SETTLE_DELAYS_MS = new int[] { 0, 80, 180 };
     private static final int[] COMPOSER_SETTLE_DELAYS_MS = new int[] { 0, 50, 120, 240, 420 };
@@ -164,6 +166,12 @@ public class MainActivity extends Activity {
         MEDIA
     }
 
+    private enum ImageSendOrigin {
+        COMPOSE,
+        CHAT,
+        RETRY
+    }
+
     private LinearLayout root;
     private LinearLayout inboxList;
     private LinearLayout activeMessagesList;
@@ -188,6 +196,9 @@ public class MainActivity extends Activity {
     private final ArrayList<Uri> pendingImageUris = new ArrayList<>();
     private String pendingImageAddress = "";
     private final ArrayList<Uri> pendingComposeImageUris = new ArrayList<>();
+    private final MmsImageSendCoordinator.Listener imageSendListener = this::onImageSendCompleted;
+    private ImageSendUi activeImageSendUi;
+    private Dialog activeImageSendDialog;
     private Uri pendingCameraImageUri;
     private String pendingCameraAddress = "";
     private boolean pendingCameraForCompose;
@@ -325,6 +336,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (MmsImageSendCoordinator.isActive(IMAGE_SEND_JOB_KEY)) {
+            Toast.makeText(this, "Finish the current picture message before opening another one.", Toast.LENGTH_SHORT).show();
+            return;
+        }
         setIntent(intent);
         openFromIntent(intent);
     }
@@ -435,6 +450,51 @@ public class MainActivity extends Activity {
             return;
         }
         target.add(uri);
+    }
+
+    static List<Uri> mergeRemainingImageUris(List<Uri> remaining, List<Uri> existing) {
+        ArrayList<Uri> merged = new ArrayList<>();
+        addUniqueImageUris(merged, remaining);
+        addUniqueImageUris(merged, existing);
+        return merged;
+    }
+
+    static List<Uri> reconcileCompletedImageUris(
+            List<Uri> requested,
+            List<Uri> remaining,
+            List<Uri> existing
+    ) {
+        ArrayList<Uri> unrelated = existing == null
+                ? new ArrayList<>()
+                : new ArrayList<>(existing);
+        if (requested != null && !requested.isEmpty()) {
+            unrelated.removeAll(requested);
+        }
+        return mergeRemainingImageUris(remaining, unrelated);
+    }
+
+    static List<String> restoredComposeRecipientAddresses(
+            String requestAddress,
+            List<String> explicitRecipients,
+            List<String> existingRecipients
+    ) {
+        ArrayList<String> restored = new ArrayList<>();
+        if (existingRecipients != null && !existingRecipients.isEmpty()) {
+            restored.addAll(existingRecipients);
+        } else if (explicitRecipients != null && !explicitRecipients.isEmpty()) {
+            restored.addAll(explicitRecipients);
+        } else if (!TextUtils.isEmpty(requestAddress)) {
+            restored.add(requestAddress);
+        }
+        return restored;
+    }
+
+    static boolean shouldHandleImageSendCompletion(
+            boolean activityResumed,
+            boolean activityDestroyed,
+            boolean activityFinishing
+    ) {
+        return activityResumed && !activityDestroyed && !activityFinishing;
     }
 
     static boolean isSupportedImageUri(Uri uri) {
@@ -782,6 +842,9 @@ public class MainActivity extends Activity {
     }
 
     private void sendComposeMessage(EditText bodyInput, EditText numberInput, LinearLayout recipientsView, View sendControl) {
+        if (blockSendWhilePictureJobActive()) {
+            return;
+        }
         String body = bodyInput == null ? "" : bodyInput.getText().toString().trim();
         boolean hasImage = !pendingComposeImageUris.isEmpty();
         if (hasTypedComposeNumber(numberInput)) {
@@ -803,18 +866,30 @@ public class MainActivity extends Activity {
             return;
         }
         ComposeRecipient recipient = composeRecipients.get(0);
-        int attachmentCountBefore = pendingComposeImageUris.size();
+        if (hasImage) {
+            List<String> recipients = composeRecipients.size() > 1 ? composeRecipientAddresses() : null;
+            String targetAddress = recipient.address;
+            if (recipients != null) {
+                targetAddress = LocalMmsStore.outgoingGroupAddress(this, recipients);
+                recipient = new ComposeRecipient(LocalMmsStore.displayNameForAddress(this, targetAddress), targetAddress);
+            }
+            startImageSend(
+                    ImageSendOrigin.COMPOSE,
+                    targetAddress,
+                    recipient.name,
+                    recipients,
+                    body,
+                    pendingComposeImageUris,
+                    bodyInput,
+                    sendControl,
+                    false,
+                    ""
+            );
+            return;
+        }
         try {
             long sentAt;
-            if (hasImage) {
-                List<String> recipients = composeRecipients.size() > 1 ? composeRecipientAddresses() : null;
-                String targetAddress = recipient.address;
-                if (recipients != null) {
-                    targetAddress = LocalMmsStore.outgoingGroupAddress(this, recipients);
-                    recipient = new ComposeRecipient(LocalMmsStore.displayNameForAddress(this, targetAddress), targetAddress);
-                }
-                sentAt = sendAttachedImages(targetAddress, recipients, body, pendingComposeImageUris);
-            } else if (composeRecipients.size() > 1) {
+            if (composeRecipients.size() > 1) {
                 List<String> recipients = composeRecipientAddresses();
                 String groupAddress = LocalMmsStore.outgoingGroupAddress(this, recipients);
                 sentAt = MmsTextSender.sendAndRecord(this, groupAddress, recipients, body);
@@ -822,7 +897,7 @@ public class MainActivity extends Activity {
             } else {
                 sentAt = SmsSender.sendAndRecord(this, recipient.address, body);
             }
-            rememberSentConversationImmediately(recipient.address, recipient.name, body, hasImage, sentAt);
+            rememberSentConversationImmediately(recipient.address, recipient.name, body, false, sentAt);
             Conversation targetConversation = SmsStore.conversationForAddress(this, recipient.address);
             composeDraft = "";
             composeRecipients.clear();
@@ -831,36 +906,8 @@ public class MainActivity extends Activity {
             sendSuccessFeedback(sendControl);
             afterKeyboardSettles(bodyInput, () -> showChat(targetConversation, false));
         } catch (SmsSender.SendException ex) {
-            Toast.makeText(this, (hasImage ? "Picture" : "Message") + " could not be sent: " + ex.getMessage(), Toast.LENGTH_LONG).show();
-            if (hasImage) {
-                if (pendingComposeImageUris.size() < attachmentCountBefore) {
-                    composeDraft = "";
-                    bodyInput.setText("");
-                }
-                showComposePage(false);
-            }
+            Toast.makeText(this, "Message could not be sent: " + ex.getMessage(), Toast.LENGTH_LONG).show();
         }
-    }
-
-    private long sendAttachedImages(
-            String address,
-            List<String> recipients,
-            String caption,
-            List<Uri> attachments
-    ) throws SmsSender.SendException {
-        long sentAt = System.currentTimeMillis();
-        boolean first = true;
-        while (attachments != null && !attachments.isEmpty()) {
-            Uri imageUri = attachments.get(0);
-            String imageCaption = first ? caption : "";
-            sentAt = recipients == null
-                    ? MmsImageSender.sendAndRecord(this, address, imageCaption, imageUri)
-                    : MmsImageSender.sendAndRecord(this, address, recipients, imageCaption, imageUri);
-            attachments.remove(0);
-            deleteCameraImageIfNeeded(imageUri);
-            first = false;
-        }
-        return sentAt;
     }
 
     private List<String> composeRecipientAddresses() {
@@ -871,6 +918,332 @@ public class MainActivity extends Activity {
             }
         }
         return addresses;
+    }
+
+    private boolean startImageSend(
+            ImageSendOrigin origin,
+            String address,
+            String name,
+            List<String> recipients,
+            String caption,
+            List<Uri> ownedUiAttachments,
+            EditText input,
+            View sendControl,
+            boolean blockedOnly,
+            String failedId
+    ) {
+        return startImageSend(
+                origin,
+                address,
+                name,
+                recipients,
+                caption,
+                ownedUiAttachments,
+                input,
+                sendControl,
+                blockedOnly,
+                failedId,
+                ownedUiAttachments
+        );
+    }
+
+    private boolean startImageSend(
+            ImageSendOrigin origin,
+            String address,
+            String name,
+            List<String> recipients,
+            String caption,
+            List<Uri> ownedUiAttachments,
+            EditText input,
+            View sendControl,
+            boolean blockedOnly,
+            String failedId,
+            List<Uri> requestedUris
+    ) {
+        if (activeImageSendUi != null || MmsImageSendCoordinator.isActive(IMAGE_SEND_JOB_KEY)) {
+            Toast.makeText(this, "Crow is already preparing a picture message.", Toast.LENGTH_SHORT).show();
+            return false;
+        }
+        ArrayList<Uri> imageUris = requestedUris == null
+                ? new ArrayList<>()
+                : new ArrayList<>(requestedUris);
+        if (TextUtils.isEmpty(address) || imageUris.isEmpty()) {
+            Toast.makeText(this, "No picture is ready to send.", Toast.LENGTH_SHORT).show();
+            return false;
+        }
+
+        ImageSendSession session = new ImageSendSession(
+                origin,
+                address,
+                name,
+                blockedOnly,
+                failedId,
+                imageUris.size()
+        );
+        ImageSendUi ui = new ImageSendUi(session, input, sendControl);
+        MmsImageSendCoordinator.Request request = new MmsImageSendCoordinator.Request(
+                address,
+                recipients,
+                caption,
+                imageUris,
+                failedId
+        );
+        if (ownedUiAttachments != null) {
+            ownedUiAttachments.clear();
+        }
+        if (sendControl != null) {
+            sendControl.setEnabled(false);
+        }
+        retainedImageSendSession = session;
+        activeImageSendUi = ui;
+        boolean accepted;
+        try {
+            accepted = MmsImageSendCoordinator.submit(this, IMAGE_SEND_JOB_KEY, request, imageSendListener);
+        } catch (RuntimeException ex) {
+            accepted = false;
+        }
+        if (!accepted) {
+            retainedImageSendSession = null;
+            activeImageSendUi = null;
+            if (sendControl != null) {
+                sendControl.setEnabled(true);
+            }
+            restoreImageAttachments(ui.origin, ui.address, imageUris);
+            Toast.makeText(this, "Picture sending could not be started.", Toast.LENGTH_LONG).show();
+            return false;
+        }
+        showImageSendProgress(imageUris.size());
+        return true;
+    }
+
+    private boolean blockSendWhilePictureJobActive() {
+        if (!MmsImageSendCoordinator.isActive(IMAGE_SEND_JOB_KEY)) {
+            return false;
+        }
+        Toast.makeText(this, "Crow is still finishing the current picture message.", Toast.LENGTH_SHORT).show();
+        return true;
+    }
+
+    private void reattachImageSendIfNeeded() {
+        ImageSendSession session = retainedImageSendSession;
+        if (session == null) {
+            return;
+        }
+        if (!MmsImageSendCoordinator.attach(IMAGE_SEND_JOB_KEY, imageSendListener)) {
+            retainedImageSendSession = null;
+            return;
+        }
+        if (activeImageSendUi == null) {
+            activeImageSendUi = new ImageSendUi(session, null, null);
+        }
+        if (activeImageSendDialog == null || !activeImageSendDialog.isShowing()) {
+            showImageSendProgress(session.imageCount);
+        }
+    }
+
+    private void showImageSendProgress(int count) {
+        dismissImageSendProgress();
+        Dialog dialog = new AlertDialog.Builder(this)
+                .setTitle(count == 1 ? "Sending picture" : "Sending pictures")
+                .setMessage("Preparing " + (count == 1 ? "your picture" : count + " pictures") + " for your carrier...")
+                .setCancelable(false)
+                .create();
+        try {
+            dialog.show();
+            activeImageSendDialog = dialog;
+        } catch (RuntimeException ignored) {
+            activeImageSendDialog = null;
+        }
+    }
+
+    private void dismissImageSendProgress() {
+        if (activeImageSendDialog != null && activeImageSendDialog.isShowing()) {
+            activeImageSendDialog.dismiss();
+        }
+        activeImageSendDialog = null;
+    }
+
+    private void onImageSendCompleted(
+            String jobKey,
+            MmsImageSendCoordinator.Request request,
+            MmsImageSendCoordinator.Result result
+    ) {
+        ImageSendSession session = retainedImageSendSession;
+        if (!IMAGE_SEND_JOB_KEY.equals(jobKey)
+                || session == null
+                || !TextUtils.equals(session.address, request.address)) {
+            return;
+        }
+        if (!shouldHandleImageSendCompletion(activityResumed, isDestroyed(), isFinishing())) {
+            return;
+        }
+        ImageSendUi ui = activeImageSendUi == null
+                ? new ImageSendUi(session, null, null)
+                : activeImageSendUi;
+        dismissImageSendProgress();
+        if (ui.sendControl != null) {
+            ui.sendControl.setEnabled(true);
+        }
+
+        if (ui.origin != ImageSendOrigin.RETRY) {
+            reconcileImageAttachments(
+                    ui.origin,
+                    ui.address,
+                    request.imageUris,
+                    result.remainingUris
+            );
+        }
+        if (result.captionConsumed) {
+            if (ui.origin == ImageSendOrigin.COMPOSE) {
+                composeDraft = "";
+            } else if (ui.origin == ImageSendOrigin.CHAT) {
+                discardPendingDraft(ui.address);
+                DraftStore.clear(this, ui.address);
+            }
+            if (ui.input != null) {
+                ui.input.setText("");
+            }
+        }
+        if (result.sentCount > 0) {
+            rememberSentConversationImmediately(
+                    request.address,
+                    ui.name,
+                    request.caption,
+                    true,
+                    result.lastSentAt
+            );
+        }
+        if (!result.succeeded()) {
+            restoreFailedImageSendState(ui, request, result.captionConsumed);
+        }
+        if (result.succeeded()) {
+            finishSuccessfulImageSend(ui, request);
+        } else {
+            finishFailedImageSend(ui, result);
+        }
+        retainedImageSendSession = null;
+        activeImageSendUi = null;
+        MmsImageSendCoordinator.consume(jobKey);
+    }
+
+    private void finishSuccessfulImageSend(
+            ImageSendUi ui,
+        MmsImageSendCoordinator.Request request
+    ) {
+        if (ui.origin == ImageSendOrigin.RETRY) {
+            try {
+                LocalMmsStore.deleteFailedMessageById(this, ui.failedId);
+            } catch (RuntimeException ignored) {
+                // Worker cleanup is authoritative; never strand a completed send in the UI.
+            }
+            discardConversationCaches(request.address);
+            invalidateInboxPresentationCache();
+            Toast.makeText(this, "Sending again.", Toast.LENGTH_SHORT).show();
+            refreshActiveThreadAsync(true);
+            return;
+        }
+
+        Conversation sentConversation = SmsStore.conversationForAddress(this, request.address);
+        if (ui.origin == ImageSendOrigin.COMPOSE) {
+            composeDraft = "";
+            composeRecipients.clear();
+            if (ui.input != null) {
+                hideKeyboard(ui.input);
+                ui.input.clearFocus();
+                sendSuccessFeedback(ui.sendControl);
+                afterKeyboardSettles(ui.input, () -> showChat(sentConversation, false));
+            } else {
+                showChat(sentConversation, false);
+            }
+            return;
+        }
+
+        discardPendingDraft(request.address);
+        DraftStore.clear(this, request.address);
+        pendingImageAddress = "";
+        if (!TextUtils.isEmpty(threadSearchQuery)) {
+            threadSearchQuery = "";
+        }
+        if (ui.input != null) {
+            hideKeyboard(ui.input);
+            ui.input.clearFocus();
+            sendSuccessFeedback(ui.sendControl);
+            afterKeyboardSettles(ui.input, () -> showChat(sentConversation, ui.blockedOnly));
+        } else {
+            showChat(sentConversation, ui.blockedOnly);
+        }
+    }
+
+    private void finishFailedImageSend(ImageSendUi ui, MmsImageSendCoordinator.Result result) {
+        String message = result.sentCount > 0
+                ? "Some pictures were sent. The remaining pictures are still attached. " + result.error
+                : "Picture could not be sent: " + result.error;
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+        if (ui.origin == ImageSendOrigin.COMPOSE) {
+            showComposePage(false);
+        } else if (ui.origin == ImageSendOrigin.CHAT) {
+            pendingImageAddress = ui.address;
+            showChat(SmsStore.conversationForAddress(this, ui.address), ui.blockedOnly);
+        } else {
+            showChat(SmsStore.conversationForAddress(this, ui.address), ui.blockedOnly);
+        }
+    }
+
+    private void restoreFailedImageSendState(
+            ImageSendUi ui,
+            MmsImageSendCoordinator.Request request,
+            boolean captionConsumed
+    ) {
+        if (ui.origin == ImageSendOrigin.COMPOSE) {
+            if (!captionConsumed) {
+                composeDraft = request.caption;
+            }
+            if (composeRecipients.isEmpty()) {
+                List<String> addresses = restoredComposeRecipientAddresses(
+                        request.address,
+                        request.explicitRecipients,
+                        composeRecipientAddresses()
+                );
+                for (String address : addresses) {
+                    if (!TextUtils.isEmpty(address)) {
+                        composeRecipients.add(new ComposeRecipient(
+                                SmsStore.displayNameForAddress(this, address),
+                                address
+                        ));
+                    }
+                }
+            }
+        } else if (ui.origin == ImageSendOrigin.CHAT && !captionConsumed) {
+            DraftStore.save(this, request.address, request.caption);
+        }
+    }
+
+    private void reconcileImageAttachments(
+            ImageSendOrigin origin,
+            String address,
+            List<Uri> requestedUris,
+            List<Uri> remainingUris
+    ) {
+        List<Uri> target = origin == ImageSendOrigin.COMPOSE ? pendingComposeImageUris : pendingImageUris;
+        List<Uri> restored = reconcileCompletedImageUris(requestedUris, remainingUris, target);
+        target.clear();
+        target.addAll(restored);
+        if (origin == ImageSendOrigin.CHAT) {
+            pendingImageAddress = target.isEmpty() ? "" : address;
+        }
+    }
+
+    private void restoreImageAttachments(ImageSendOrigin origin, String address, List<Uri> remainingUris) {
+        if (remainingUris == null || remainingUris.isEmpty() || origin == ImageSendOrigin.RETRY) {
+            return;
+        }
+        List<Uri> target = origin == ImageSendOrigin.COMPOSE ? pendingComposeImageUris : pendingImageUris;
+        List<Uri> restored = mergeRemainingImageUris(remainingUris, target);
+        target.clear();
+        target.addAll(restored);
+        if (origin == ImageSendOrigin.CHAT) {
+            pendingImageAddress = address;
+        }
     }
 
     private FrameLayout threeDotMenuButton(String contentDescription) {
@@ -2504,6 +2877,9 @@ public class MainActivity extends Activity {
     }
 
     private void retryFailedText(String failedId, SmsSender.RetryMessage retry) {
+        if (blockSendWhilePictureJobActive()) {
+            return;
+        }
         try {
             SmsSender.sendAndRecord(this, retry.address, retry.body);
             SmsSender.deletePendingById(this, failedId);
@@ -2517,24 +2893,43 @@ public class MainActivity extends Activity {
     }
 
     private void retryFailedMms(String failedId, LocalMmsStore.RetryMessage retry) {
-        try {
-            long sentAt;
-            if (retry.hasImage()) {
-                sentAt = MmsImageSender.sendAndRecord(
-                        this,
+        if (blockSendWhilePictureJobActive()) {
+            return;
+        }
+        if (retry.hasImage()) {
+            try {
+                List<String> recipients = LocalMmsStore.isGroupAddress(retry.address)
+                        ? MmsImageSender.recipientsForAddress(
+                                retry.address,
+                                GroupMmsRecipients.knownOwnNumbers(this)
+                        )
+                        : null;
+                startImageSend(
+                        ImageSendOrigin.RETRY,
                         retry.address,
+                        LocalMmsStore.displayNameForAddress(this, retry.address),
+                        recipients,
                         retry.body,
-                        Uri.parse(retry.imageUri)
+                        null,
+                        null,
+                        null,
+                        activeThreadBlockedOnly,
+                        failedId,
+                        java.util.Collections.singletonList(Uri.parse(retry.imageUri))
                 );
-            } else {
-                sentAt = MmsTextSender.sendAndRecord(this, retry.address, retry.body);
+            } catch (SmsSender.SendException ex) {
+                Toast.makeText(this, ex.getMessage(), Toast.LENGTH_LONG).show();
             }
+            return;
+        }
+        try {
+            long sentAt = MmsTextSender.sendAndRecord(this, retry.address, retry.body);
             LocalMmsStore.deleteFailedMessageById(this, failedId);
             rememberSentConversationImmediately(
                     retry.address,
                     LocalMmsStore.displayNameForAddress(this, retry.address),
                     retry.body,
-                    retry.hasImage(),
+                    false,
                     sentAt
             );
             discardConversationCaches(retry.address);
@@ -3591,6 +3986,51 @@ public class MainActivity extends Activity {
         }
     }
 
+    private static final class ImageSendSession {
+        final ImageSendOrigin origin;
+        final String address;
+        final String name;
+        final boolean blockedOnly;
+        final String failedId;
+        final int imageCount;
+
+        ImageSendSession(
+                ImageSendOrigin origin,
+                String address,
+                String name,
+                boolean blockedOnly,
+                String failedId,
+                int imageCount
+        ) {
+            this.origin = origin;
+            this.address = address;
+            this.name = TextUtils.isEmpty(name) ? address : name;
+            this.blockedOnly = blockedOnly;
+            this.failedId = failedId == null ? "" : failedId;
+            this.imageCount = Math.max(1, imageCount);
+        }
+    }
+
+    private static final class ImageSendUi {
+        final ImageSendOrigin origin;
+        final String address;
+        final String name;
+        final EditText input;
+        final View sendControl;
+        final boolean blockedOnly;
+        final String failedId;
+
+        ImageSendUi(ImageSendSession session, EditText input, View sendControl) {
+            this.origin = session.origin;
+            this.address = session.address;
+            this.name = session.name;
+            this.input = input;
+            this.sendControl = sendControl;
+            this.blockedOnly = session.blockedOnly;
+            this.failedId = session.failedId;
+        }
+    }
+
     private void showConversationMediaPage(Conversation conversation) {
         if (conversation == null) {
             showInbox();
@@ -4289,6 +4729,9 @@ public class MainActivity extends Activity {
     }
 
     private void sendMessage(EditText input, ScrollView scroll, View sendControl) {
+        if (blockSendWhilePictureJobActive()) {
+            return;
+        }
         String body = input.getText().toString().trim();
         boolean hasImage = pendingImageForConversation(activeConversation);
         if ((TextUtils.isEmpty(body) && !hasImage) || activeConversation == null) {
@@ -4297,34 +4740,33 @@ public class MainActivity extends Activity {
         if (!ensureDefaultSmsAppFor("sending")) {
             return;
         }
-        int attachmentCountBefore = pendingImageUris.size();
-        try {
-            if (hasImage) {
-                List<String> recipients = LocalMmsStore.isGroupAddress(activeConversation.address)
+        if (hasImage) {
+            Conversation conversation = activeConversation;
+            try {
+                List<String> recipients = LocalMmsStore.isGroupAddress(conversation.address)
                         ? MmsImageSender.recipientsForAddress(
-                                activeConversation.address,
+                                conversation.address,
                                 GroupMmsRecipients.knownOwnNumbers(this)
                         )
                         : null;
-                long sentAt = sendAttachedImages(activeConversation.address, recipients, body, pendingImageUris);
-                rememberSentConversationImmediately(
-                        activeConversation.address,
-                        activeConversation.name,
+                startImageSend(
+                        ImageSendOrigin.CHAT,
+                        conversation.address,
+                        conversation.name,
+                        recipients,
                         body,
-                        true,
-                        sentAt
+                        pendingImageUris,
+                        input,
+                        sendControl,
+                        activeThreadBlockedOnly,
+                        ""
                 );
-                DraftStore.clear(this, activeConversation.address);
-                pendingImageAddress = "";
-                input.setText("");
-                hideKeyboard(input);
-                input.clearFocus();
-                sendSuccessFeedback(sendControl);
-                Conversation sentConversation = activeConversation;
-                boolean blockedOnly = activeThreadBlockedOnly;
-                afterKeyboardSettles(input, () -> showChat(sentConversation, blockedOnly));
-                return;
+            } catch (SmsSender.SendException ex) {
+                Toast.makeText(this, "Picture could not be sent: " + ex.getMessage(), Toast.LENGTH_LONG).show();
             }
+            return;
+        }
+        try {
             long sentAt;
             if (LocalMmsStore.isGroupAddress(activeConversation.address)) {
                 sentAt = MmsTextSender.sendAndRecord(this, activeConversation.address, body);
@@ -4351,14 +4793,7 @@ public class MainActivity extends Activity {
                 scroll.postDelayed(() -> scroll.fullScroll(View.FOCUS_DOWN), 80);
             });
         } catch (SmsSender.SendException ex) {
-            Toast.makeText(this, (hasImage ? "Picture" : "Message") + " could not be sent: " + ex.getMessage(), Toast.LENGTH_LONG).show();
-            if (hasImage) {
-                if (pendingImageUris.size() < attachmentCountBefore) {
-                    DraftStore.clear(this, activeConversation.address);
-                    input.setText("");
-                }
-                refreshAttachmentScreen();
-            }
+            Toast.makeText(this, "Message could not be sent: " + ex.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -4541,7 +4976,7 @@ public class MainActivity extends Activity {
     }
 
     private boolean cameraImageHasData(Uri uri) {
-        File file = cameraImageFile(uri);
+        File file = MmsFiles.cameraFileForUri(this, uri);
         return file != null && file.isFile() && file.length() > 0L;
     }
 
@@ -4560,29 +4995,8 @@ public class MainActivity extends Activity {
         }
     }
 
-    private File cameraImageFile(Uri uri) {
-        if (uri == null
-                || !"content".equals(uri.getScheme())
-                || !MmsFiles.CAMERA_AUTHORITY.equals(uri.getAuthority())
-                || uri.getPathSegments().size() != 2
-                || !"camera".equals(uri.getPathSegments().get(0))
-                || TextUtils.isEmpty(uri.getLastPathSegment())) {
-            return null;
-        }
-        File file = new File(MmsFiles.appFileDirPath(this, MmsFiles.CAMERA_DIR), uri.getLastPathSegment());
-        try {
-            return MmsFiles.isAppFile(this, MmsFiles.CAMERA_DIR, file) ? file : null;
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
     private void deleteCameraImageIfNeeded(Uri uri) {
-        File file = cameraImageFile(uri);
-        if (file == null) {
-            return;
-        }
-        MmsFiles.deleteAppFile(this, MmsFiles.CAMERA_DIR, file.getAbsolutePath());
+        MmsFiles.deleteCameraFileUri(this, uri);
     }
 
     private void deleteCameraImagesIfNeeded(List<Uri> uris) {
@@ -5323,6 +5737,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         activityResumed = true;
+        reattachImageSendIfNeeded();
         SmsStore.clearContactCaches();
         boolean skipRefresh = shouldSkipInitialRefresh(firstResume, pendingMessageRefresh);
         firstResume = false;
@@ -5419,6 +5834,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         activityResumed = false;
+        MmsImageSendCoordinator.detach(IMAGE_SEND_JOB_KEY, imageSendListener);
         flushPendingDraft();
         super.onPause();
     }
@@ -5457,6 +5873,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         activityResumed = false;
+        dismissImageSendProgress();
+        MmsImageSendCoordinator.detach(IMAGE_SEND_JOB_KEY, imageSendListener);
+        activeImageSendUi = null;
         searchHandler.removeCallbacks(inboxSearchTask);
         flushPendingDraft();
         inboxLoadGeneration++;
