@@ -276,6 +276,33 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void backupRules_excludeAllPrivateStorageDomains() throws Exception {
+        File legacyRules = firstExistingFile(
+                new File("src/main/res/xml/backup_rules.xml"),
+                new File("app/src/main/res/xml/backup_rules.xml")
+        );
+        File extractionRules = firstExistingFile(
+                new File("src/main/res/xml/data_extraction_rules.xml"),
+                new File("app/src/main/res/xml/data_extraction_rules.xml")
+        );
+
+        assertPrivateStorageExcluded(DocumentBuilderFactory.newInstance()
+                .newDocumentBuilder().parse(legacyRules).getDocumentElement());
+        Document extraction = DocumentBuilderFactory.newInstance()
+                .newDocumentBuilder().parse(extractionRules);
+        assertPrivateStorageExcluded((Element) extraction.getElementsByTagName("cloud-backup").item(0));
+        assertPrivateStorageExcluded((Element) extraction.getElementsByTagName("device-transfer").item(0));
+    }
+
+    @Test
+    public void messageStoreObserver_skipsRefreshCoveredByDirectReceiver() {
+        assertFalse(MainActivity.shouldScheduleMessageStoreRefresh(1500L, 1000L));
+        assertTrue(MainActivity.shouldScheduleMessageStoreRefresh(1800L, 1000L));
+        assertTrue(MainActivity.shouldScheduleMessageStoreRefresh(1000L, 0L));
+        assertTrue(MainActivity.shouldScheduleMessageStoreRefresh(900L, 1000L));
+    }
+
+    @Test
     public void wasAnyPermissionGranted_detectsSmsPermissionWithoutContacts() {
         String[] permissions = new String[] {
                 Manifest.permission.READ_CONTACTS,
@@ -538,6 +565,22 @@ public class MainActivityIntentTest {
         }
         Assert.fail("AndroidManifest.xml was not found.");
         return files[0];
+    }
+
+    private static void assertPrivateStorageExcluded(Element parent) {
+        java.util.Set<String> excludedDomains = new java.util.HashSet<>();
+        NodeList excludes = parent.getElementsByTagName("exclude");
+        for (int index = 0; index < excludes.getLength(); index++) {
+            Element exclude = (Element) excludes.item(index);
+            if (".".equals(exclude.getAttribute("path"))) {
+                excludedDomains.add(exclude.getAttribute("domain"));
+            }
+        }
+        assertTrue(excludedDomains.contains("root"));
+        assertTrue(excludedDomains.contains("file"));
+        assertTrue(excludedDomains.contains("database"));
+        assertTrue(excludedDomains.contains("sharedpref"));
+        assertTrue(excludedDomains.contains("external"));
     }
 
     private static boolean hasAndroidName(Element parent, String childTag, String value) {

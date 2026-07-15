@@ -19,6 +19,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
 import android.database.Cursor;
+import android.database.ContentObserver;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -32,6 +33,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Environment;
+import android.os.SystemClock;
 import android.provider.ContactsContract;
 import android.provider.MediaStore;
 import android.media.RingtoneManager;
@@ -108,6 +110,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_TAKE_PHOTO = 36;
     private static final int REQUEST_EXPORT_SETTINGS = 37;
     private static final int REQUEST_IMPORT_SETTINGS = 38;
+    private static final long MESSAGE_STORE_DIRECT_UPDATE_GRACE_MILLIS = 750L;
     private static final String STATE_CAMERA_URI = "state_camera_uri";
     private static final String STATE_CAMERA_ADDRESS = "state_camera_address";
     private static final String STATE_CAMERA_FOR_COMPOSE = "state_camera_for_compose";
@@ -236,6 +239,21 @@ public class MainActivity extends Activity {
     private final Handler draftSaveHandler = new Handler(Looper.getMainLooper());
     private final Runnable draftSaveTask = this::persistPendingDraft;
     private final Handler searchHandler = new Handler(Looper.getMainLooper());
+    private final Handler messageStoreHandler = new Handler(Looper.getMainLooper());
+    private final Runnable messageStoreRefreshTask = this::refreshAfterMessageStoreChange;
+    private final ContentObserver messageStoreObserver = new ContentObserver(messageStoreHandler) {
+        @Override
+        public void onChange(boolean selfChange) {
+            scheduleMessageStoreRefresh();
+        }
+
+        @Override
+        public void onChange(boolean selfChange, Uri uri) {
+            scheduleMessageStoreRefresh();
+        }
+    };
+    private boolean messageStoreObserverRegistered;
+    private long lastDirectMessageUpdateUptimeMillis;
     private final Runnable inboxSearchTask = () -> {
         if (screenMode == ScreenMode.INBOX && inboxList != null) {
             refreshInboxList(true);
@@ -249,6 +267,8 @@ public class MainActivity extends Activity {
     private final BroadcastReceiver messageUpdateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            lastDirectMessageUpdateUptimeMillis = SystemClock.uptimeMillis();
+            messageStoreHandler.removeCallbacks(messageStoreRefreshTask);
             String address = intent == null ? "" : intent.getStringExtra(EXTRA_OPEN_ADDRESS);
             String body = intent == null ? "" : intent.getStringExtra(EXTRA_MESSAGE_BODY);
             long dateMillis = intent == null ? 0L : intent.getLongExtra(EXTRA_MESSAGE_DATE, 0L);
@@ -283,6 +303,7 @@ public class MainActivity extends Activity {
         styleSystemBars();
         requestRuntimePermissions();
         registerMessageUpdates();
+        registerMessageStoreObserver();
         restoreTransientState(savedInstanceState);
         openFromIntent(getIntent());
         runStartupMaintenance();
@@ -5672,6 +5693,58 @@ public class MainActivity extends Activity {
         ContextCompat.registerReceiver(this, messageUpdateReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
+    private void registerMessageStoreObserver() {
+        if (messageStoreObserverRegistered) {
+            return;
+        }
+        try {
+            getContentResolver().registerContentObserver(
+                    Telephony.Sms.CONTENT_URI,
+                    true,
+                    messageStoreObserver
+            );
+            messageStoreObserverRegistered = true;
+        } catch (SecurityException | IllegalArgumentException ignored) {
+            messageStoreObserverRegistered = false;
+        }
+    }
+
+    private void scheduleMessageStoreRefresh() {
+        if (isDestroyed() || isFinishing()) {
+            return;
+        }
+        if (!shouldScheduleMessageStoreRefresh(
+                SystemClock.uptimeMillis(),
+                lastDirectMessageUpdateUptimeMillis
+        )) {
+            return;
+        }
+        if (!activityResumed) {
+            pendingMessageRefresh = true;
+            return;
+        }
+        messageStoreHandler.removeCallbacks(messageStoreRefreshTask);
+        messageStoreHandler.postDelayed(messageStoreRefreshTask, 180L);
+    }
+
+    static boolean shouldScheduleMessageStoreRefresh(long nowUptimeMillis, long lastDirectUpdateUptimeMillis) {
+        return lastDirectUpdateUptimeMillis <= 0L
+                || nowUptimeMillis < lastDirectUpdateUptimeMillis
+                || nowUptimeMillis - lastDirectUpdateUptimeMillis > MESSAGE_STORE_DIRECT_UPDATE_GRACE_MILLIS;
+    }
+
+    private void refreshAfterMessageStoreChange() {
+        if (!activityResumed || isDestroyed() || isFinishing()) {
+            pendingMessageRefresh = true;
+            return;
+        }
+        if (screenMode == ScreenMode.INBOX) {
+            refreshInboxList(true);
+        } else if (screenMode == ScreenMode.CHAT && activeConversation != null) {
+            refreshActiveThreadAsync(isScrollNearBottom(activeScrollView, dp(120)));
+        }
+    }
+
     private boolean sameAddress(String first, String second) {
         return AddressUtil.sameConversationAddress(first, second);
     }
@@ -5710,6 +5783,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         activityResumed = true;
+        registerMessageStoreObserver();
         reattachImageSendIfNeeded();
         SmsStore.clearContactCaches();
         if (root == null) {
@@ -5841,6 +5915,7 @@ public class MainActivity extends Activity {
         MmsImageSendCoordinator.detach(IMAGE_SEND_JOB_KEY, imageSendListener);
         activeImageSendUi = null;
         searchHandler.removeCallbacks(inboxSearchTask);
+        messageStoreHandler.removeCallbacks(messageStoreRefreshTask);
         flushPendingDraft();
         inboxLoadGeneration++;
         threadLoadGeneration++;
@@ -5853,6 +5928,13 @@ public class MainActivity extends Activity {
         try {
             unregisterReceiver(messageUpdateReceiver);
         } catch (IllegalArgumentException ignored) {
+        }
+        if (messageStoreObserverRegistered) {
+            try {
+                getContentResolver().unregisterContentObserver(messageStoreObserver);
+            } catch (IllegalArgumentException ignored) {
+            }
+            messageStoreObserverRegistered = false;
         }
         super.onDestroy();
     }

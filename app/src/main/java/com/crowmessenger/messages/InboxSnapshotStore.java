@@ -1,5 +1,6 @@
 package com.crowmessenger.messages;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.text.TextUtils;
 
@@ -20,6 +21,11 @@ final class InboxSnapshotStore {
     }
 
     static synchronized void save(Context context, List<Conversation> conversations) {
+        write(context, conversations, false);
+    }
+
+    @SuppressLint("ApplySharedPref")
+    private static void write(Context context, List<Conversation> conversations, boolean durable) {
         JSONArray rows = new JSONArray();
         if (conversations != null) {
             for (Conversation conversation : conversations) {
@@ -46,10 +52,16 @@ final class InboxSnapshotStore {
             snapshot.put("rows", rows);
         } catch (JSONException ignored) {
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        android.content.SharedPreferences.Editor editor = context
+                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
-                .putString(KEY_SNAPSHOT, snapshot.toString())
-                .commit();
+                .putString(KEY_SNAPSHOT, snapshot.toString());
+        if (durable) {
+            // The receiver must finish only after the sleeping-app snapshot reaches disk.
+            editor.commit();
+        } else {
+            editor.apply();
+        }
     }
 
     static synchronized List<Conversation> load(Context context) {
@@ -106,6 +118,25 @@ final class InboxSnapshotStore {
             String body,
             long dateMillis
     ) {
+        return upsertIncoming(context, address, body, dateMillis, false);
+    }
+
+    static synchronized List<Conversation> upsertIncomingDurably(
+            Context context,
+            String address,
+            String body,
+            long dateMillis
+    ) {
+        return upsertIncoming(context, address, body, dateMillis, true);
+    }
+
+    private static List<Conversation> upsertIncoming(
+            Context context,
+            String address,
+            String body,
+            long dateMillis,
+            boolean durable
+    ) {
         List<Conversation> rows = loadVisible(context);
         if (TextUtils.isEmpty(address)
                 || TextUtils.isEmpty(body)
@@ -144,7 +175,7 @@ final class InboxSnapshotStore {
             ));
         }
         PinnedStore.sortConversations(context, rows);
-        save(context, rows);
+        write(context, rows, durable);
         return rows;
     }
 
