@@ -1,6 +1,7 @@
 package com.crowmessenger.messages;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
@@ -27,6 +28,9 @@ public class InboxSnapshotStoreTest {
                 .edit()
                 .clear()
                 .commit();
+        context.getSharedPreferences("blocked_numbers", Context.MODE_PRIVATE).edit().clear().commit();
+        context.getSharedPreferences("spam_senders", Context.MODE_PRIVATE).edit().clear().commit();
+        context.getSharedPreferences("trashed_conversations", Context.MODE_PRIVATE).edit().clear().commit();
     }
 
     @Test
@@ -91,5 +95,55 @@ public class InboxSnapshotStoreTest {
         List<Conversation> loaded = InboxSnapshotStore.load(context);
         assertEquals(1, loaded.size());
         assertEquals("Lisa", loaded.get(0).name);
+    }
+
+    @Test
+    public void upsertIncoming_makesSleepingAppSnapshotCurrentImmediately() {
+        InboxSnapshotStore.save(context, List.of(new Conversation(
+                "1", "15557654321", "Jordan", "Older", 1000L, 0
+        )));
+
+        List<Conversation> updated = InboxSnapshotStore.upsertIncoming(
+                context,
+                "15551234567",
+                "New message",
+                2000L
+        );
+
+        assertEquals(2, updated.size());
+        assertEquals("15551234567", updated.get(0).address);
+        assertEquals("New message", updated.get(0).snippet);
+        assertEquals(1, updated.get(0).unreadCount);
+        assertEquals("New message", InboxSnapshotStore.load(context).get(0).snippet);
+    }
+
+    @Test
+    public void upsertIncoming_sameDeliveryDoesNotDoubleUnreadCount() {
+        InboxSnapshotStore.upsertIncoming(context, "15551234567", "Hello", 2000L);
+        List<Conversation> updated = InboxSnapshotStore.upsertIncoming(
+                context,
+                "+1 (555) 123-4567",
+                "Hello",
+                2000L
+        );
+
+        assertEquals(1, updated.size());
+        assertEquals(1, updated.get(0).unreadCount);
+    }
+
+    @Test
+    public void upsertIncoming_doesNotRestoreSpamIntoNormalSnapshot() {
+        SpamFilter.markSpam(context, "15551234567");
+
+        List<Conversation> updated = InboxSnapshotStore.upsertIncoming(
+                context,
+                "15551234567",
+                "Blocked message",
+                2000L
+        );
+
+        assertTrue(updated.isEmpty());
+        assertFalse(InboxSnapshotStore.loadVisible(context).stream()
+                .anyMatch(row -> AddressUtil.sameConversationAddress(row.address, "15551234567")));
     }
 }

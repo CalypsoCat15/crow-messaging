@@ -24,6 +24,10 @@ public class SmsDeliverReceiverTest {
     public void setUp() {
         context = RuntimeEnvironment.getApplication();
         context.getSharedPreferences("local_mms", Context.MODE_PRIVATE).edit().clear().commit();
+        context.getSharedPreferences("inbox_snapshot", Context.MODE_PRIVATE).edit().clear().commit();
+        context.getSharedPreferences("blocked_numbers", Context.MODE_PRIVATE).edit().clear().commit();
+        context.getSharedPreferences("spam_senders", Context.MODE_PRIVATE).edit().clear().commit();
+        context.getSharedPreferences("trashed_conversations", Context.MODE_PRIVATE).edit().clear().commit();
     }
 
     @Test
@@ -62,6 +66,18 @@ public class SmsDeliverReceiverTest {
 
         assertTrue(saved);
         assertTrue(LocalMmsStore.loadForAddress(context, "15551234567").isEmpty());
+    }
+
+    @Test
+    public void saveNotifyAndBroadcast_updatesInboxSnapshotBeforeAppIsOpen() {
+        SmsDeliverReceiver.IncomingSms incoming = incoming("15551234567", "hello", 1234L);
+
+        SmsDeliverReceiver.saveNotifyAndBroadcast(context, incoming, (c, a, b, d) -> true);
+
+        List<Conversation> snapshot = InboxSnapshotStore.load(context);
+        assertEquals(1, snapshot.size());
+        assertEquals("hello", snapshot.get(0).snippet);
+        assertEquals(1234L, snapshot.get(0).dateMillis);
     }
 
     @Test

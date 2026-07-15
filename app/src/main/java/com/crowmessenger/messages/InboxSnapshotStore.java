@@ -19,7 +19,7 @@ final class InboxSnapshotStore {
     private InboxSnapshotStore() {
     }
 
-    static void save(Context context, List<Conversation> conversations) {
+    static synchronized void save(Context context, List<Conversation> conversations) {
         JSONArray rows = new JSONArray();
         if (conversations != null) {
             for (Conversation conversation : conversations) {
@@ -49,10 +49,10 @@ final class InboxSnapshotStore {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putString(KEY_SNAPSHOT, snapshot.toString())
-                .apply();
+                .commit();
     }
 
-    static List<Conversation> load(Context context) {
+    static synchronized List<Conversation> load(Context context) {
         ArrayList<Conversation> conversations = new ArrayList<>();
         String raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getString(KEY_SNAPSHOT, "");
@@ -100,7 +100,55 @@ final class InboxSnapshotStore {
         return conversations;
     }
 
-    static void remove(Context context, String address) {
+    static synchronized List<Conversation> upsertIncoming(
+            Context context,
+            String address,
+            String body,
+            long dateMillis
+    ) {
+        List<Conversation> rows = loadVisible(context);
+        if (TextUtils.isEmpty(address)
+                || TextUtils.isEmpty(body)
+                || MessageNotifier.shouldSuppressIncoming(context, address, "", body)) {
+            return rows;
+        }
+        TrashStore.restore(context, address);
+        Conversation previous = null;
+        for (int index = rows.size() - 1; index >= 0; index--) {
+            Conversation row = rows.get(index);
+            if (row == null || !AddressUtil.sameConversationAddress(row.address, address)) {
+                continue;
+            }
+            if (previous == null || row.dateMillis > previous.dateMillis) {
+                previous = row;
+            }
+            rows.remove(index);
+        }
+        long safeDate = dateMillis > 0L ? dateMillis : System.currentTimeMillis();
+        if (previous != null
+                && TextUtils.equals(previous.snippet, body)
+                && previous.dateMillis == safeDate) {
+            rows.add(previous);
+        } else {
+            Conversation details = previous != null ? previous : SmsStore.conversationForAddress(context, address);
+            rows.add(new Conversation(
+                    details == null ? "" : details.threadId,
+                    address,
+                    details == null ? address : details.name,
+                    details == null ? "" : details.photoUri,
+                    body,
+                    safeDate,
+                    previous == null
+                            ? Math.max(1, details == null ? 0 : details.unreadCount)
+                            : previous.unreadCount + 1
+            ));
+        }
+        PinnedStore.sortConversations(context, rows);
+        save(context, rows);
+        return rows;
+    }
+
+    static synchronized void remove(Context context, String address) {
         List<Conversation> rows = load(context);
         rows.removeIf(conversation -> AddressUtil.sameConversationAddress(conversation.address, address));
         save(context, rows);

@@ -219,7 +219,6 @@ public class MainActivity extends Activity {
     private int activeThreadMessageLimit = RECENT_THREAD_LIMIT;
     private boolean activeThreadHasOlderMessages;
     private boolean activityResumed;
-    private boolean firstResume = true;
     private boolean pendingMessageRefresh;
     private String pendingIncomingAddress = "";
     private String pendingIncomingBody = "";
@@ -1695,34 +1694,8 @@ public class MainActivity extends Activity {
             return;
         }
         String cacheKey = inboxCacheKey(false, "");
-        List<Conversation> cached = inboxRowsCache.get(cacheKey);
-        if (cached == null) {
-            cached = InboxSnapshotStore.loadVisible(this);
-        }
-        ArrayList<Conversation> updated = new ArrayList<>(cached);
-        Conversation previous = removeConversationRows(updated, address);
-        long safeDate = dateMillis > 0L ? dateMillis : System.currentTimeMillis();
-        if (previous != null
-                && TextUtils.equals(previous.snippet, body)
-                && previous.dateMillis == safeDate) {
-            updated.add(previous);
-        } else {
-            Conversation details = previous != null ? previous : SmsStore.conversationForAddress(this, address);
-            updated.add(new Conversation(
-                    details == null ? "" : details.threadId,
-                    address,
-                    details == null ? address : details.name,
-                    details == null ? "" : details.photoUri,
-                    body,
-                    safeDate,
-                    previous == null
-                            ? Math.max(1, details == null ? 0 : details.unreadCount)
-                            : previous.unreadCount + 1
-            ));
-        }
-        sortInboxRows(updated);
+        List<Conversation> updated = InboxSnapshotStore.upsertIncoming(this, address, body, dateMillis);
         inboxRowsCache.put(cacheKey, updated);
-        InboxSnapshotStore.save(this, updated);
         renderInboxRows(updated, false, cacheKey);
     }
 
@@ -5739,11 +5712,6 @@ public class MainActivity extends Activity {
         activityResumed = true;
         reattachImageSendIfNeeded();
         SmsStore.clearContactCaches();
-        boolean skipRefresh = shouldSkipInitialRefresh(firstResume, pendingMessageRefresh);
-        firstResume = false;
-        if (skipRefresh) {
-            return;
-        }
         if (root == null) {
             return;
         }
@@ -5761,10 +5729,6 @@ public class MainActivity extends Activity {
 
     static boolean supportsPhoneActions(String address) {
         return AddressUtil.hasSinglePhoneAddress(address);
-    }
-
-    static boolean shouldSkipInitialRefresh(boolean firstResume, boolean pendingMessageRefresh) {
-        return firstResume && !pendingMessageRefresh;
     }
 
     private void afterKeyboardSettles(View anchor, Runnable action) {

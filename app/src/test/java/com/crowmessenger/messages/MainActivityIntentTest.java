@@ -341,13 +341,6 @@ public class MainActivityIntentTest {
     }
 
     @Test
-    public void initialResume_doesNotSkipPendingIncomingMessageRefresh() {
-        assertTrue(MainActivity.shouldSkipInitialRefresh(true, false));
-        assertFalse(MainActivity.shouldSkipInitialRefresh(true, true));
-        assertFalse(MainActivity.shouldSkipInitialRefresh(false, false));
-    }
-
-    @Test
     public void phoneActions_allowNumbersButRejectSenderIdsAndGroups() {
         assertTrue(MainActivity.supportsPhoneActions("+1 (555) 123-4567"));
         assertTrue(MainActivity.supportsPhoneActions("31354"));
