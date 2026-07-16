@@ -267,6 +267,57 @@ final class LocalMmsStore {
         saveMessage(context, address, senderAddress, body, "", dateMillis, false);
     }
 
+    static synchronized boolean replaceClosestUnreadableMessage(
+            Context context,
+            String address,
+            String senderAddress,
+            String body,
+            String imageUri,
+            long dateHintMillis
+    ) {
+        if (TextUtils.isEmpty(body) && TextUtils.isEmpty(imageUri)) {
+            return false;
+        }
+        SharedPreferences prefs = prefs(context);
+        String cleanSender = normalizedParticipantAddress(senderAddress);
+        String bestId = "";
+        long bestDistance = Long.MAX_VALUE;
+        for (String id : savedIds(prefs)) {
+            if (isOutgoing(prefs, id)
+                    || !UNREADABLE_MESSAGE.equals(prefs.getString(bodyKey(id), ""))) {
+                continue;
+            }
+            String savedAddress = prefs.getString(addressKey(id), "");
+            String savedSender = normalizedParticipantAddress(prefs.getString(senderKey(id), ""));
+            boolean sameConversation = AddressUtil.sameConversationAddress(savedAddress, address);
+            boolean sameSender = !TextUtils.isEmpty(cleanSender) && TextUtils.equals(savedSender, cleanSender);
+            if (!sameConversation && !sameSender) {
+                continue;
+            }
+            long savedDate = prefs.getLong(dateKey(id), 0L);
+            long distance = dateHintMillis <= 0 || savedDate <= 0
+                    ? 0L
+                    : Math.abs(savedDate - dateHintMillis);
+            if (distance > 5L * 60L * 1000L || distance >= bestDistance) {
+                continue;
+            }
+            bestId = id;
+            bestDistance = distance;
+        }
+        if (TextUtils.isEmpty(bestId)) {
+            return false;
+        }
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putString(bodyKey(bestId), TextUtils.isEmpty(body) ? PICTURE_MESSAGE : body);
+        if (!TextUtils.isEmpty(cleanSender)) {
+            editor.putString(senderKey(bestId), cleanSender);
+        }
+        if (!TextUtils.isEmpty(imageUri)) {
+            editor.putString(imageKey(bestId), imageUri);
+        }
+        return editor.commit();
+    }
+
     static synchronized void cleanupAttachmentNameMessages(Context context) {
         SharedPreferences prefs = prefs(context);
         Set<String> ids = savedIds(prefs);

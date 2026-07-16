@@ -973,13 +973,23 @@ final class MmsPduUtil {
     }
 
     private static boolean isFriendlyNonAscii(char value) {
-        return value == '\u2018'
+        if (value == '\u2018'
                 || value == '\u2019'
                 || value == '\u201C'
                 || value == '\u201D'
                 || value == '\u2026'
                 || value == '\u2013'
-                || value == '\u2014';
+                || value == '\u2014') {
+            return true;
+        }
+        int type = Character.getType(value);
+        return type == Character.CONNECTOR_PUNCTUATION
+                || type == Character.DASH_PUNCTUATION
+                || type == Character.START_PUNCTUATION
+                || type == Character.END_PUNCTUATION
+                || type == Character.INITIAL_QUOTE_PUNCTUATION
+                || type == Character.FINAL_QUOTE_PUNCTUATION
+                || type == Character.OTHER_PUNCTUATION;
     }
 
     private static boolean looksLikeEncodedToken(String value, int letters, int spaces) {

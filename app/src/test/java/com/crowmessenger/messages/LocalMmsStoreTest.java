@@ -530,6 +530,35 @@ public class LocalMmsStoreTest {
     }
 
     @Test
+    public void replaceClosestUnreadableMessage_preservesRowAndReadState() {
+        String address = "15551234567";
+        long receivedAt = 10_000L;
+        LocalMmsStore.saveNotice(
+                context,
+                address,
+                address,
+                LocalMmsStore.UNREADABLE_MESSAGE,
+                receivedAt
+        );
+        LocalMmsStore.markAddressRead(context, address);
+
+        assertTrue(LocalMmsStore.replaceClosestUnreadableMessage(
+                context,
+                address,
+                address,
+                "Recovered text",
+                "",
+                receivedAt + 500L
+        ));
+
+        List<ChatMessage> messages = LocalMmsStore.loadForAddress(context, address);
+        assertEquals(1, messages.size());
+        assertEquals("Recovered text", messages.get(0).body);
+        assertEquals(receivedAt, messages.get(0).dateMillis);
+        assertEquals(0, LocalMmsStore.loadConversations(context, false, "").get(0).unreadCount);
+    }
+
+    @Test
     public void cleanupAttachmentNameMessages_removesMessagesWithoutAddress() {
         SharedPreferences prefs = context.getSharedPreferences("local_mms", Context.MODE_PRIVATE);
         String id = "missing-address";

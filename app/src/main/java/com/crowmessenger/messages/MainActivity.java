@@ -323,6 +323,7 @@ public class MainActivity extends Activity {
                 runMaintenanceStep(appContext, "MMS debug archive cleanup", () -> MmsDebugStore.trimArchivedPduFiles(appContext));
                 runMaintenanceStep(appContext, "Scheduled messages", () -> ScheduledSmsReceiver.scheduleAll(appContext));
                 runMaintenanceStep(appContext, "Pending MMS recovery", () -> MmsDownloadedReceiver.recoverPendingDownloads(appContext));
+                runMaintenanceStep(appContext, "Unreadable MMS recovery", () -> MmsDownloadedReceiver.recoverUnreadableArchives(appContext));
                 runMaintenanceStep(appContext, "MMS temporary file cleanup", () -> MmsFiles.cleanupStaleTemporaryFiles(appContext));
             } finally {
                 finishStartupMaintenance();

@@ -110,6 +110,43 @@ public class MmsDownloadedReceiverTest {
     }
 
     @Test
+    public void recoverUnreadableArchives_replacesExistingPlaceholderWithoutDuplicate() throws Exception {
+        String address = "15551234567";
+        String recoveredText = "\u4f60\u597d\uff01";
+        long receivedAt = System.currentTimeMillis();
+        File unreadableDir = MmsFiles.appFileDir(context, MmsFiles.UNREADABLE_DIR);
+        File[] oldFiles = unreadableDir.listFiles();
+        if (oldFiles != null) {
+            for (File oldFile : oldFiles) {
+                assertTrue(oldFile.delete());
+            }
+        }
+        File archive = new File(unreadableDir, "recover-text.pdu");
+        try (FileOutputStream output = new FileOutputStream(archive)) {
+            output.write(MmsTextPduComposer.compose(
+                    "tx-recover",
+                    List.of(address),
+                    recoveredText
+            ));
+        }
+        assertTrue(archive.setLastModified(receivedAt));
+        LocalMmsStore.saveNotice(
+                context,
+                address,
+                address,
+                LocalMmsStore.UNREADABLE_MESSAGE,
+                receivedAt
+        );
+
+        assertEquals(1, MmsDownloadedReceiver.recoverUnreadableArchives(context));
+
+        List<ChatMessage> messages = LocalMmsStore.loadForAddress(context, address);
+        assertEquals(1, messages.size());
+        assertEquals(recoveredText, messages.get(0).body);
+        assertFalse(archive.exists());
+    }
+
+    @Test
     public void handleDownloadResult_cleansFailedCallbackOnlyOnce() throws Exception {
         File downloadDir = MmsFiles.appFileDirPath(context, MmsFiles.DOWNLOADS_DIR);
         assertTrue(downloadDir.exists() || downloadDir.mkdirs());

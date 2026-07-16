@@ -245,6 +245,28 @@ public class MmsPduUtilTest {
         assertEquals("Test", MmsPduUtil.extractText(pdu));
     }
 
+    @Test
+    public void extractText_readsUtf8CarrierTextPartWithNameAndCharsetHeaders() {
+        byte[] pdu = java.util.Base64.getDecoder().decode(
+                "jISYMDE3Q0VGN0Y5QzhBMDAwMEI3RDAwMTAyMDEAjZCLMDE3Q0VGN0Y5QzhBMDAwMEI3RDAwMTAy"
+                        + "AIkWgDU1NTAxMDEwMDAvVFlQRT1QTE1OAIUEalj3yIaBj4GXNTU1MDEwMjAwMC9UWVBFPVBMTU4A"
+                        + "lzU1NTAxMDMwMDAvVFlQRT1QTE1OAIqAhBuziWFwcGxpY2F0aW9uL3NtaWwAijxzbWlsPgACL4MR"
+                        + "G2FwcGxpY2F0aW9uL3NtaWwAhXNtaWwueG1sAI5zbWlsLnhtbADAIjxzbWlsPgA8c21pbD4NCiAg"
+                        + "ICA8aGVhZD4NCiAgICAgICAgPGxheW91dD4NCiAgICAgICAgICAgIDxyb290LWxheW91dCB3aWR0"
+                        + "aD0iMjQwIiBoZWlnaHQ9IjE2MCIvPg0KICAgICAgICAgICAgPHJlZ2lvbiBpZD0iSW1hZ2UiIHdp"
+                        + "ZHRoPSIxMDAlIiBoZWlnaHQ9IjY3JSIgbGVmdD0iMCUiIHRvcD0iMCUiIGZpdD0ibWVldCIvPg0K"
+                        + "ICAgICAgICAgICAgPHJlZ2lvbiBpZD0iVGV4dCIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMzMlIiBs"
+                        + "ZWZ0PSIwJSIgdG9wPSI2NyUiIGZpdD0ibWVldCIvPg0KICAgICAgICA8L2xheW91dD4NCiAgICA8"
+                        + "L2hlYWQ+DQogICAgPGJvZHk+DQogICAgPHBhciBkdXI9IjgwMDBtcyI+PHRleHQgc3JjPSJ0ZXh0"
+                        + "MDAwMDAxLnR4dCIgcmVnaW9uPSJUZXh0Ii8+PC9wYXI+PC9ib2R5Pg0KPC9zbWlsPjMYE4OFdGV4"
+                        + "dDAwMDAwMS50eHQAgeqOdGV4dDAwMDAwMS50eHQAwCI8dGV4dDAwMDAwMT4A5L2g5Zyo6Lef5oiR"
+                        + "6K+05LuA5LmI77yf"
+        );
+
+        assertEquals("\u4f60\u5728\u8ddf\u6211\u8bf4\u4ec0\u4e48\uff1f", MmsPduUtil.extractText(pdu));
+        assertEquals(0, MmsPduUtil.extractFirstImage(pdu).length);
+    }
+
     private static Part part(byte[] header, byte[] data) {
         return new Part(header, data);
     }

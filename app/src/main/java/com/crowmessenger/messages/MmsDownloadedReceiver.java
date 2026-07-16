@@ -208,6 +208,69 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
         }
     }
 
+    static int recoverUnreadableArchives(Context context) {
+        File directory = MmsFiles.appFileDirPath(context, MmsFiles.UNREADABLE_DIR);
+        File[] files = directory.listFiles(file -> file.isFile() && file.getName().endsWith(".pdu"));
+        if (files == null || files.length == 0) {
+            return 0;
+        }
+        int recovered = 0;
+        for (File file : files) {
+            String createdImageUri = "";
+            try {
+                byte[] pdu = Files.readAllBytes(file.toPath());
+                byte[] image = safeImage(context, pdu);
+                String text = cleanDownloadedText(safeText(context, pdu));
+                if (image.length == 0 && TextUtils.isEmpty(text)) {
+                    continue;
+                }
+                String senderAddress = downloadedSenderAddress(pdu, "");
+                List<String> participants = safeParticipants(context, pdu, senderAddress);
+                addParticipant(participants, senderAddress);
+                String conversationAddress = conversationAddressForDownloadedMms(
+                        context,
+                        senderAddress,
+                        senderAddress,
+                        participants
+                );
+                if (image.length > 0) {
+                    String baseName = file.getName().substring(0, file.getName().length() - 4);
+                    File imageFile = new File(
+                            MmsFiles.appFileDir(context, MmsFiles.IMAGES_DIR),
+                            baseName + imageExtension(image)
+                    );
+                    try (FileOutputStream output = new FileOutputStream(imageFile)) {
+                        output.write(image);
+                    }
+                    createdImageUri = Uri.fromFile(imageFile).toString();
+                }
+                if (!LocalMmsStore.replaceClosestUnreadableMessage(
+                        context,
+                        conversationAddress,
+                        senderAddress,
+                        text,
+                        createdImageUri,
+                        file.lastModified()
+                )) {
+                    if (!TextUtils.isEmpty(createdImageUri)) {
+                        MmsFiles.deleteAppFileUri(context, MmsFiles.IMAGES_DIR, createdImageUri);
+                    }
+                    continue;
+                }
+                recovered++;
+                file.delete();
+                MessageUpdateBroadcaster.broadcastIncoming(context, conversationAddress);
+                MmsDebugStore.record(context, "Recovered an archived unreadable MMS.");
+            } catch (Exception ex) {
+                if (!TextUtils.isEmpty(createdImageUri)) {
+                    MmsFiles.deleteAppFileUri(context, MmsFiles.IMAGES_DIR, createdImageUri);
+                }
+                MmsDebugStore.record(context, "Unreadable MMS recovery skipped: " + ex.getClass().getSimpleName());
+            }
+        }
+        return recovered;
+    }
+
     private static boolean isStalePendingDownload(LocalMmsStore.Pending pending) {
         return pending.createdAtMillis <= 0
                 || pending.createdAtMillis <= System.currentTimeMillis() - PENDING_DOWNLOAD_GRACE_MILLIS;
@@ -325,6 +388,11 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
     }
 
     private static String imageExtension(byte[] image) {
+        if (image != null && image.length >= 6
+                && image[0] == 0x47 && image[1] == 0x49 && image[2] == 0x46 && image[3] == 0x38
+                && (image[4] == 0x37 || image[4] == 0x39) && image[5] == 0x61) {
+            return ".gif";
+        }
         if (image != null && image.length >= 12
                 && image[0] == 0x52 && image[1] == 0x49 && image[2] == 0x46 && image[3] == 0x46
                 && image[8] == 0x57 && image[9] == 0x45 && image[10] == 0x42 && image[11] == 0x50) {
