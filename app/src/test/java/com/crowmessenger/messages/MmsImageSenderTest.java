@@ -162,6 +162,46 @@ public class MmsImageSenderTest {
         assertTrue(sourceImage.delete());
     }
 
+    @Test
+    public void sendAndRecord_preservesGifAnimationBytesAndContentType() throws Exception {
+        String address = "15551234567";
+        byte[] gif = new byte[] { 'G', 'I', 'F', '8', '9', 'a', 1, 2, 3, 4, 5 };
+        File sourceImage = new File(context.getCacheDir(), "animated-source.gif");
+        try (FileOutputStream output = new FileOutputStream(sourceImage)) {
+            output.write(gif);
+        }
+        String[] localImageUri = { "" };
+        String[] pduName = { "" };
+
+        MmsImageSender.sendAndRecord(
+                context,
+                address,
+                List.of(address),
+                "",
+                Uri.fromFile(sourceImage),
+                (sendContext, pduUri, sentIntent) -> {
+                    android.content.Intent callbackIntent = Shadows.shadowOf(sentIntent).getSavedIntent();
+                    localImageUri[0] = callbackIntent.getStringExtra(MmsSentReceiver.EXTRA_IMAGE_URI);
+                    pduName[0] = pduUri.getLastPathSegment();
+                }
+        );
+
+        assertTrue(localImageUri[0].endsWith(".gif"));
+        assertTrue(Arrays.equals(
+                gif,
+                java.nio.file.Files.readAllBytes(new File(Uri.parse(localImageUri[0]).getPath()).toPath())
+        ));
+        byte[] pdu = java.nio.file.Files.readAllBytes(
+                new File(MmsFiles.appFileDirPath(context, MmsFiles.OUTGOING_DIR), pduName[0]).toPath()
+        );
+        assertTrue(new String(pdu, java.nio.charset.StandardCharsets.ISO_8859_1).contains("image/gif"));
+
+        ChatMessage message = LocalMmsStore.loadForAddress(context, address).get(0);
+        assertTrue(LocalMmsStore.rollbackSentMessage(context, message.localStatusId, address));
+        MmsSentReceiver.deleteOutgoingPdu(context, pduName[0]);
+        assertTrue(sourceImage.delete());
+    }
+
     private File createSourceJpeg(String name) throws Exception {
         File file = new File(context.getCacheDir(), name);
         Bitmap bitmap = Bitmap.createBitmap(32, 24, Bitmap.Config.ARGB_8888);

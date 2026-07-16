@@ -80,6 +80,30 @@ public class MainActivityIntentTest {
     }
 
     @Test
+    public void imageShareFromCurrentKeyboard_isRecognizedWithoutTreatingGalleryAsKeyboard() {
+        Uri gif = Uri.parse("content://keyboard/gif/42");
+        Intent intent = new Intent(Intent.ACTION_SEND)
+                .setType("image/gif")
+                .putExtra(Intent.EXTRA_STREAM, gif);
+
+        assertTrue(MainActivity.isImageShareFromInputMethod(
+                intent,
+                "com.samsung.android.honeyboard",
+                "com.samsung.android.honeyboard/.service.HoneyBoardService"
+        ));
+        assertFalse(MainActivity.isImageShareFromInputMethod(
+                intent,
+                "com.sec.android.gallery3d",
+                "com.samsung.android.honeyboard/.service.HoneyBoardService"
+        ));
+        assertFalse(MainActivity.isImageShareFromInputMethod(
+                new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "hello"),
+                "com.samsung.android.honeyboard",
+                "com.samsung.android.honeyboard/.service.HoneyBoardService"
+        ));
+    }
+
+    @Test
     public void composeIntent_readsSharedPictureFromClipData() {
         Uri picture = Uri.parse("content://gallery/picture/43");
         Intent intent = new Intent(Intent.ACTION_SEND).setType("image/png");
@@ -224,6 +248,8 @@ public class MainActivityIntentTest {
     @Test
     public void manifest_declaresSeparateTextShareAndSmsSendToFilters() throws Exception {
         Document manifest = loadManifest();
+        Element activity = (Element) manifest.getElementsByTagName("activity").item(0);
+        assertEquals("singleTask", activity.getAttribute("android:launchMode"));
         NodeList filters = manifest.getElementsByTagName("intent-filter");
         boolean textShareFilter = false;
         boolean imageShareFilter = false;

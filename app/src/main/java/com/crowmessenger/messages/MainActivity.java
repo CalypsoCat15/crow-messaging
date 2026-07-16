@@ -4,6 +4,7 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.ComponentCaller;
 import android.app.DatePickerDialog;
 import android.app.Dialog;
 import android.app.TimePickerDialog;
@@ -25,6 +26,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.Animatable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -36,6 +38,7 @@ import android.os.Environment;
 import android.os.SystemClock;
 import android.provider.ContactsContract;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.media.RingtoneManager;
 import android.provider.Telephony;
 import android.speech.RecognizerIntent;
@@ -355,13 +358,77 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onNewIntent(Intent intent) {
+        String callerPackage = currentIntentCallerPackage();
         super.onNewIntent(intent);
         if (MmsImageSendCoordinator.isActive(IMAGE_SEND_JOB_KEY)) {
             Toast.makeText(this, "Finish the current picture message before opening another one.", Toast.LENGTH_SHORT).show();
             return;
         }
         setIntent(intent);
+        if (attachKeyboardImageToOpenConversation(intent, callerPackage)) {
+            setIntent(new Intent(Intent.ACTION_MAIN));
+            return;
+        }
         openFromIntent(intent);
+    }
+
+    private boolean attachKeyboardImageToOpenConversation(Intent intent, String callerPackage) {
+        if (screenMode != ScreenMode.CHAT || activeConversation == null) {
+            return false;
+        }
+        String inputMethod = Settings.Secure.getString(
+                getContentResolver(),
+                Settings.Secure.DEFAULT_INPUT_METHOD
+        );
+        if (!isImageShareFromInputMethod(intent, callerPackage, inputMethod)) {
+            return false;
+        }
+        ArrayList<Uri> images = sharedImageUris(intent);
+        if (images.isEmpty()) {
+            return false;
+        }
+        for (Uri image : images) {
+            persistSharedImagePermission(intent, image);
+        }
+        attachSelectedImages(images, false, activeConversation.address, false);
+        return true;
+    }
+
+    private String currentIntentCallerPackage() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            try {
+                ComponentCaller caller = getCurrentCaller();
+                if (caller != null && !TextUtils.isEmpty(caller.getPackage())) {
+                    return caller.getPackage();
+                }
+            } catch (IllegalStateException ignored) {
+            }
+        }
+        Uri referrer = getReferrer();
+        return referrer != null && "android-app".equals(referrer.getScheme())
+                ? emptyIfNull(referrer.getHost())
+                : "";
+    }
+
+    static boolean isImageShareFromInputMethod(Intent intent, String callerPackage, String inputMethod) {
+        if (intent == null
+                || !Intent.ACTION_SEND.equals(intent.getAction())
+                || TextUtils.isEmpty(intent.getType())
+                || !intent.getType().startsWith("image/")
+                || sharedImageUris(intent).isEmpty()) {
+            return false;
+        }
+        String keyboardPackage = emptyIfNull(inputMethod).trim();
+        int separator = keyboardPackage.indexOf('/');
+        if (separator >= 0) {
+            keyboardPackage = keyboardPackage.substring(0, separator);
+        }
+        return !TextUtils.isEmpty(keyboardPackage)
+                && TextUtils.equals(keyboardPackage, emptyIfNull(callerPackage).trim());
+    }
+
+    private static String emptyIfNull(String value) {
+        return value == null ? "" : value;
     }
 
     private void openFromIntent(Intent intent) {
@@ -2471,7 +2538,7 @@ public class MainActivity extends Activity {
 
         ImageView preview = new ImageView(this);
         preview.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        preview.setImageURI(imageUri);
+        setMessageImage(preview, imageUri);
         preview.setBackgroundColor(SURFACE);
         preview.setContentDescription(count > 1
                 ? "Attached picture " + (index + 1) + " of " + count
@@ -2670,7 +2737,7 @@ public class MainActivity extends Activity {
             imageFrame.setClipToOutline(true);
             ImageView image = new ImageView(this);
             image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            image.setImageURI(imageUri);
+            setMessageImage(image, imageUri);
             image.setOnClickListener(v -> showPicture(message.imageUri));
             image.setOnLongClickListener(v -> {
                 showMessageActions(message);
@@ -3026,7 +3093,7 @@ public class MainActivity extends Activity {
         ImageView image = new ImageView(this);
         image.setAdjustViewBounds(true);
         image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        image.setImageURI(uri);
+        setMessageImage(image, uri);
         image.setBackgroundColor(BLACK);
         int padding = dp(12);
         image.setPadding(padding, padding, padding, padding);
@@ -3481,6 +3548,13 @@ public class MainActivity extends Activity {
         }
         imageHeightCache.put(imageUri, height);
         return height;
+    }
+
+    private static void setMessageImage(ImageView image, Uri uri) {
+        image.setImageURI(uri);
+        if (image.getDrawable() instanceof Animatable) {
+            ((Animatable) image.getDrawable()).start();
+        }
     }
 
     static int scaledImageHeight(int targetWidth, int minimumHeight, int maximumHeight, int sourceWidth, int sourceHeight) {
@@ -4112,7 +4186,7 @@ public class MainActivity extends Activity {
                 ChatMessage message = pictures.get(index);
                 ImageView image = new ImageView(this);
                 image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                image.setImageURI(messageImageUri(message.imageUri));
+                setMessageImage(image, messageImageUri(message.imageUri));
                 image.setBackgroundColor(SURFACE);
                 image.setContentDescription("Picture from " + SmsStore.formatMessageTimestamp(this, message.dateMillis));
                 setFeedbackClickListener(image, v -> showPicture(message.imageUri));

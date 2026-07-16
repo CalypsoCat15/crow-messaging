@@ -104,4 +104,20 @@ public class MmsTextPduComposerTest {
         assertEquals("", MmsPduUtil.extractText(pdu));
         assertArrayEquals(image, MmsPduUtil.extractFirstImage(pdu));
     }
+
+    @Test
+    public void composedGifMmsKeepsAnimatedImageBytesAndContentType() {
+        byte[] gif = new byte[] { 'G', 'I', 'F', '8', '9', 'a', 1, 2, 3 };
+
+        byte[] pdu = MmsTextPduComposer.composeImage(
+                "tx-gif",
+                Arrays.asList("555-010-2000"),
+                "",
+                "image/gif",
+                gif
+        );
+
+        assertTrue(new String(pdu, java.nio.charset.StandardCharsets.ISO_8859_1).contains("image/gif"));
+        assertArrayEquals(gif, MmsPduUtil.extractFirstImage(pdu));
+    }
 }

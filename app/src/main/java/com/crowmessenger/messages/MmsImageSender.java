@@ -75,15 +75,26 @@ final class MmsImageSender {
             );
         }
 
-        byte[] imageBytes = preparedJpeg(context, sourceImageUri);
+        PreparedImage preparedImage = prepareImage(context, sourceImageUri);
+        byte[] imageBytes = preparedImage.bytes;
         String id = UUID.randomUUID().toString();
-        File localImage = writeFile(appFileDir(context, MmsFiles.IMAGES_DIR), id + ".jpg", imageBytes);
+        File localImage = writeFile(
+                appFileDir(context, MmsFiles.IMAGES_DIR),
+                id + preparedImage.extension,
+                imageBytes
+        );
         File outgoingPdu;
         try {
             outgoingPdu = writeFile(
                     appFileDir(context, MmsFiles.OUTGOING_DIR),
                     id + ".pdu",
-                    MmsTextPduComposer.composeImage("tx-" + id, normalizedRecipients, caption, imageBytes)
+                    MmsTextPduComposer.composeImage(
+                            "tx-" + id,
+                            normalizedRecipients,
+                            caption,
+                            preparedImage.contentType,
+                            imageBytes
+                    )
             );
         } catch (SmsSender.SendException ex) {
             MmsFiles.deleteAppFile(context, MmsFiles.IMAGES_DIR, localImage.getAbsolutePath());
@@ -212,6 +223,80 @@ final class MmsImageSender {
             if (prepared != bitmap) {
                 bitmap.recycle();
             }
+        }
+    }
+
+    private static PreparedImage prepareImage(Context context, Uri sourceImageUri) throws SmsSender.SendException {
+        if (isGif(context, sourceImageUri)) {
+            byte[] gif = readGif(context, sourceImageUri);
+            if (hasGifSignature(gif)) {
+                return new PreparedImage(gif, "image/gif", ".gif");
+            }
+        }
+        return new PreparedImage(preparedJpeg(context, sourceImageUri), "image/jpeg", ".jpg");
+    }
+
+    private static boolean isGif(Context context, Uri sourceImageUri) {
+        String contentType = context.getContentResolver().getType(sourceImageUri);
+        if ("image/gif".equalsIgnoreCase(contentType)) {
+            return true;
+        }
+        String path = sourceImageUri == null ? "" : sourceImageUri.getPath();
+        if (path != null && path.toLowerCase(java.util.Locale.ROOT).endsWith(".gif")) {
+            return true;
+        }
+        try (InputStream stream = context.getContentResolver().openInputStream(sourceImageUri)) {
+            byte[] signature = new byte[6];
+            return stream != null && stream.read(signature) == signature.length && hasGifSignature(signature);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static byte[] readGif(Context context, Uri sourceImageUri) throws SmsSender.SendException {
+        try (InputStream stream = context.getContentResolver().openInputStream(sourceImageUri);
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            if (stream == null) {
+                throw new IOException("No GIF stream");
+            }
+            byte[] buffer = new byte[16 * 1024];
+            int read;
+            while ((read = stream.read(buffer)) != -1) {
+                if (output.size() + read > MAX_IMAGE_BYTES) {
+                    throw new SmsSender.SendException(
+                            "That GIF is too large for carrier picture messaging. Try a smaller GIF."
+                    );
+                }
+                output.write(buffer, 0, read);
+            }
+            return output.toByteArray();
+        } catch (SmsSender.SendException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new SmsSender.SendException("GIF could not be opened.", ex);
+        }
+    }
+
+    private static boolean hasGifSignature(byte[] bytes) {
+        return bytes != null
+                && bytes.length >= 6
+                && bytes[0] == 'G'
+                && bytes[1] == 'I'
+                && bytes[2] == 'F'
+                && bytes[3] == '8'
+                && (bytes[4] == '7' || bytes[4] == '9')
+                && bytes[5] == 'a';
+    }
+
+    private static final class PreparedImage {
+        final byte[] bytes;
+        final String contentType;
+        final String extension;
+
+        PreparedImage(byte[] bytes, String contentType, String extension) {
+            this.bytes = bytes;
+            this.contentType = contentType;
+            this.extension = extension;
         }
     }
 

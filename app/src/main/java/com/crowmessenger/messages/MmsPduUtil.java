@@ -491,12 +491,14 @@ final class MmsPduUtil {
         return indexOfAsciiIgnoreCase(pdu, "image/", headerStart, headerEnd) >= 0
                 || startsWith(pdu, dataStart, dataEnd, new byte[] { (byte) 0xFF, (byte) 0xD8 })
                 || startsWith(pdu, dataStart, dataEnd, new byte[] { (byte) 0x89, 0x50, 0x4E, 0x47 })
+                || startsWith(pdu, dataStart, dataEnd, new byte[] { 0x47, 0x49, 0x46, 0x38 })
                 || startsWith(pdu, dataStart, dataEnd, new byte[] { 0x52, 0x49, 0x46, 0x46 });
     }
 
     private static boolean looksLikeImageData(byte[] pdu, int dataStart, int dataEnd) {
         return startsWith(pdu, dataStart, dataEnd, new byte[] { (byte) 0xFF, (byte) 0xD8 })
                 || startsWith(pdu, dataStart, dataEnd, new byte[] { (byte) 0x89, 0x50, 0x4E, 0x47 })
+                || startsWith(pdu, dataStart, dataEnd, new byte[] { 0x47, 0x49, 0x46, 0x38 })
                 || startsWith(pdu, dataStart, dataEnd, new byte[] { 0x52, 0x49, 0x46, 0x46 });
     }
 

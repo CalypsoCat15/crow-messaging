@@ -30,9 +30,19 @@ final class MmsTextPduComposer {
     }
 
     static byte[] composeImage(String transactionId, List<String> recipients, String body, byte[] imageBytes) {
+        return composeImage(transactionId, recipients, body, "image/jpeg", imageBytes);
+    }
+
+    static byte[] composeImage(
+            String transactionId,
+            List<String> recipients,
+            String body,
+            String imageContentType,
+            byte[] imageBytes
+    ) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         writeSendHeaders(out, transactionId, recipients);
-        writeMultipartImage(out, body, imageBytes);
+        writeMultipartImage(out, body, imageContentType, imageBytes);
         return out.toByteArray();
     }
 
@@ -64,12 +74,20 @@ final class MmsTextPduComposer {
         out.write(text, 0, text.length);
     }
 
-    private static void writeMultipartImage(ByteArrayOutputStream out, String body, byte[] imageBytes) {
+    private static void writeMultipartImage(
+            ByteArrayOutputStream out,
+            String body,
+            String imageContentType,
+            byte[] imageBytes
+    ) {
         byte[] image = imageBytes == null ? new byte[0] : imageBytes;
         byte[] text = safe(body).trim().getBytes(StandardCharsets.UTF_8);
         int partCount = text.length > 0 ? 2 : 1;
         writeUintvar(out, partCount);
-        writePart(out, IMAGE_JPEG_HEADER, image);
+        byte[] imageHeader = "image/gif".equalsIgnoreCase(safe(imageContentType).trim())
+                ? asciiHeader("image/gif")
+                : IMAGE_JPEG_HEADER;
+        writePart(out, imageHeader, image);
         if (text.length > 0) {
             writePart(out, new byte[] { (byte) CONTENT_TYPE_TEXT_PLAIN }, text);
         }
