@@ -20,6 +20,8 @@ public class MmsPduUtilTest {
     public void extractFirstImage_handlesEmptyInput() {
         assertArrayEquals(new byte[0], MmsPduUtil.extractFirstImage(null));
         assertArrayEquals(new byte[0], MmsPduUtil.extractFirstImage(new byte[0]));
+        assertArrayEquals(new byte[0], MmsPduUtil.extractFirstVideo(null));
+        assertArrayEquals(new byte[0], MmsPduUtil.extractFirstVideo(new byte[0]));
     }
 
     @Test
@@ -164,6 +166,22 @@ public class MmsPduUtilTest {
                 part(asciiHeader("image/jpeg"), new byte[] { (byte) 0xFF, (byte) 0xD8, 1, (byte) 0xFF, (byte) 0xD9 })
         );
 
+        assertEquals("", MmsPduUtil.extractText(pdu));
+    }
+
+    @Test
+    public void extractVideo_readsMp4PartWithoutInventingImageOrCaption() {
+        byte[] video = new byte[] {
+                0, 0, 0, 24, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm',
+                0, 0, 0, 8, 'm', 'd', 'a', 't', 0x4d, 0x25
+        };
+        byte[] pdu = multipartPdu(
+                part(asciiHeader("application/smil"), bytes("<smil><video src=\"video000000.mp4\"/></smil>")),
+                part(asciiHeader("video/mp4"), video)
+        );
+
+        assertArrayEquals(video, MmsPduUtil.extractFirstVideo(pdu));
+        assertArrayEquals(new byte[0], MmsPduUtil.extractFirstImage(pdu));
         assertEquals("", MmsPduUtil.extractText(pdu));
     }
 

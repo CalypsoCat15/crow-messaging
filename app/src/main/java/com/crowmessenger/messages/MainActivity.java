@@ -40,6 +40,7 @@ import android.provider.ContactsContract;
 import android.provider.MediaStore;
 import android.provider.Settings;
 import android.media.RingtoneManager;
+import android.media.MediaMetadataRetriever;
 import android.provider.Telephony;
 import android.speech.RecognizerIntent;
 import android.text.InputType;
@@ -268,6 +269,7 @@ public class MainActivity extends Activity {
     private final LruCache<String, List<Conversation>> inboxRowsCache = new LruCache<>(SCREEN_CACHE_LIMIT);
     private final LruCache<String, List<ChatMessage>> threadRowsCache = new LruCache<>(SCREEN_CACHE_LIMIT);
     private final LruCache<String, Integer> imageHeightCache = new LruCache<>(64);
+    private final LruCache<String, Bitmap> videoThumbnailCache = new LruCache<>(8);
     private final BroadcastReceiver messageUpdateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -321,6 +323,7 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             try {
                 runMaintenanceStep(appContext, "MMS cleanup", () -> LocalMmsStore.cleanupAttachmentNameMessages(appContext));
+                runMaintenanceStep(appContext, "Archived video MMS recovery", () -> MmsDownloadedReceiver.recoverArchivedVideoMessages(appContext));
                 runMaintenanceStep(appContext, "MMS debug archive cleanup", () -> MmsDebugStore.trimArchivedPduFiles(appContext));
                 runMaintenanceStep(appContext, "Scheduled messages", () -> ScheduledSmsReceiver.scheduleAll(appContext));
                 runMaintenanceStep(appContext, "Pending MMS recovery", () -> MmsDownloadedReceiver.recoverPendingDownloads(appContext));
@@ -2726,6 +2729,7 @@ public class MainActivity extends Activity {
 
         Uri imageUri = messageImageUri(message.imageUri);
         boolean hasImage = imageUri != null;
+        boolean hasVideo = hasImage && isVideoUri(imageUri);
         String displayText = displayableText(message);
         String senderLabel = senderLabelForMessage(message);
         if (!groupedWithPrevious && !TextUtils.isEmpty(senderLabel)) {
@@ -2739,13 +2743,23 @@ public class MainActivity extends Activity {
             imageFrame.setClipToOutline(true);
             ImageView image = new ImageView(this);
             image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            setMessageImage(image, imageUri);
+            setMessageMediaPreview(image, imageUri);
             image.setOnClickListener(v -> showPicture(message.imageUri));
             image.setOnLongClickListener(v -> {
                 showMessageActions(message);
                 return true;
             });
             imageFrame.addView(image, new FrameLayout.LayoutParams(-1, -1));
+            if (hasVideo) {
+                ImageButton play = new ImageButton(this);
+                play.setImageResource(android.R.drawable.ic_media_play);
+                play.setColorFilter(BLACK);
+                play.setPadding(dp(11), dp(11), dp(11), dp(11));
+                play.setBackground(primaryGradientBackground(24));
+                play.setContentDescription("Play video message");
+                setFeedbackClickListener(play, v -> showPicture(message.imageUri));
+                imageFrame.addView(play, new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.CENTER));
+            }
             imageFrame.setOnClickListener(v -> showPicture(message.imageUri));
             stack.addView(imageFrame, new LinearLayout.LayoutParams(dp(285), imageHeightForUri(message.imageUri)));
         }
@@ -2855,16 +2869,21 @@ public class MainActivity extends Activity {
             return;
         }
         ArrayList<String> options = new ArrayList<>();
-        boolean hasImage = messageImageUri(message.imageUri) != null;
+        Uri mediaUri = messageImageUri(message.imageUri);
+        boolean hasImage = mediaUri != null;
+        boolean hasVideo = hasImage && isVideoUri(mediaUri);
         if (hasDisplayableText(message)) {
             options.add("Copy text");
         }
-        if (hasDisplayableText(message) || hasImage) {
+        if (hasDisplayableText(message) || (hasImage && !hasVideo)) {
             options.add("Forward");
         }
         if (hasImage) {
-            options.add("View picture");
-            options.add("Save picture");
+            options.add(hasVideo ? "Play video" : "View picture");
+            options.add(hasVideo ? "Save video" : "Save picture");
+            if (hasVideo) {
+                options.add("Share video");
+            }
         }
         if (isRetryableFailedMessage(message)) {
             options.add("Retry sending");
@@ -3003,8 +3022,17 @@ public class MainActivity extends Activity {
         if ("View picture".equals(option)) {
             return R.drawable.ic_action_image;
         }
+        if ("Play video".equals(option)) {
+            return R.drawable.ic_action_play;
+        }
         if ("Save picture".equals(option)) {
             return R.drawable.ic_action_save;
+        }
+        if ("Save video".equals(option)) {
+            return R.drawable.ic_action_save;
+        }
+        if ("Share video".equals(option)) {
+            return R.drawable.ic_action_share;
         }
         if ("Retry sending".equals(option)) {
             return R.drawable.ic_action_retry;
@@ -3025,8 +3053,17 @@ public class MainActivity extends Activity {
         if ("View picture".equals(option)) {
             return "Open the picture full screen";
         }
+        if ("Play video".equals(option)) {
+            return "Open this video in the phone's player";
+        }
         if ("Save picture".equals(option)) {
             return "Add the picture to your Gallery";
+        }
+        if ("Save video".equals(option)) {
+            return "Add the video to Movies/Crow Messenger";
+        }
+        if ("Share video".equals(option)) {
+            return "Share the original video file";
         }
         if ("Retry sending".equals(option)) {
             return "Try sending this message again";
@@ -3044,10 +3081,22 @@ public class MainActivity extends Activity {
             forwardMessage(message);
         } else if ("View picture".equals(choice)) {
             showPicture(message.imageUri);
+        } else if ("Play video".equals(choice)) {
+            showPicture(message.imageUri);
         } else if ("Save picture".equals(choice)) {
             Uri uri = messageImageUri(message.imageUri);
             if (uri != null) {
                 savePictureToGallery(uri);
+            }
+        } else if ("Save video".equals(choice)) {
+            Uri uri = messageImageUri(message.imageUri);
+            if (uri != null) {
+                saveVideoToGallery(uri);
+            }
+        } else if ("Share video".equals(choice)) {
+            Uri uri = messageImageUri(message.imageUri);
+            if (uri != null) {
+                shareMedia(uri, "video/mp4", "Share video");
             }
         } else if ("Retry sending".equals(choice)) {
             confirmRetryFailedMessage(message);
@@ -3170,7 +3219,9 @@ public class MainActivity extends Activity {
         if (message == null || TextUtils.isEmpty(message.body)) {
             return "";
         }
-        if (messageImageUri(message.imageUri) != null && LocalMmsStore.PICTURE_MESSAGE.equals(message.body)) {
+        if (messageImageUri(message.imageUri) != null
+                && (LocalMmsStore.PICTURE_MESSAGE.equals(message.body)
+                || LocalMmsStore.VIDEO_MESSAGE.equals(message.body))) {
             return "";
         }
         return message.body;
@@ -3197,6 +3248,10 @@ public class MainActivity extends Activity {
     private void showPicture(String imageUri) {
         Uri uri = messageImageUri(imageUri);
         if (uri == null) {
+            return;
+        }
+        if (isVideoUri(uri)) {
+            playVideo(uri);
             return;
         }
         ScreenMode returnScreen = screenMode;
@@ -3261,6 +3316,10 @@ public class MainActivity extends Activity {
     }
 
     private void sharePicture(Uri uri) {
+        shareMedia(uri, pictureMimeType(uri), "Share picture");
+    }
+
+    private void shareMedia(Uri uri, String mimeType, String chooserTitle) {
         try {
             Uri sharedUri = uri;
             if ("file".equals(uri.getScheme())) {
@@ -3271,12 +3330,27 @@ public class MainActivity extends Activity {
                 );
             }
             Intent share = new Intent(Intent.ACTION_SEND)
-                    .setType(pictureMimeType(uri))
+                    .setType(mimeType)
                     .putExtra(Intent.EXTRA_STREAM, sharedUri)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivity(Intent.createChooser(share, "Share picture"));
+            startActivity(Intent.createChooser(share, chooserTitle));
         } catch (Exception ex) {
-            Toast.makeText(this, "Picture could not be shared.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Media could not be shared.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void playVideo(Uri uri) {
+        try {
+            Uri sharedUri = uri;
+            if ("file".equals(uri.getScheme())) {
+                sharedUri = FileProvider.getUriForFile(this, MmsFiles.CAMERA_AUTHORITY, new File(uri.getPath()));
+            }
+            Intent play = new Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(sharedUri, "video/mp4")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(play);
+        } catch (Exception ex) {
+            Toast.makeText(this, "Video could not be opened.", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -3363,6 +3437,12 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean isVideoUri(Uri uri) {
+        return uri != null
+                && !TextUtils.isEmpty(uri.getPath())
+                && uri.getPath().toLowerCase(Locale.ROOT).endsWith(".mp4");
+    }
+
     private void showMessageDetails(ChatMessage message) {
         if (message == null) {
             return;
@@ -3376,7 +3456,7 @@ public class MainActivity extends Activity {
                     .append(LocalMmsStore.displayNameForParticipant(this, message.senderAddress));
         }
         if (!TextUtils.isEmpty(message.imageUri)) {
-            details.append("\nIncludes picture");
+            details.append(isVideoUri(messageImageUri(message.imageUri)) ? "\nIncludes video" : "\nIncludes picture");
         }
         new AlertDialog.Builder(this)
                 .setTitle("Message details")
@@ -3700,6 +3780,20 @@ public class MainActivity extends Activity {
             if (uri == null) {
                 return height;
             }
+            if (isVideoUri(uri)) {
+                Bitmap thumbnail = videoThumbnailCache.get(uri.toString());
+                if (thumbnail != null) {
+                    height = scaledImageHeight(
+                            targetWidth,
+                            dp(160),
+                            dp(360),
+                            thumbnail.getWidth(),
+                            thumbnail.getHeight()
+                    );
+                }
+                imageHeightCache.put(imageUri, height);
+                return height;
+            }
             BitmapFactory.Options options = new BitmapFactory.Options();
             options.inJustDecodeBounds = true;
             BitmapFactory.decodeFile(uri.getPath(), options);
@@ -3710,10 +3804,85 @@ public class MainActivity extends Activity {
         return height;
     }
 
+    private void saveVideoToGallery(Uri sourceUri) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Toast.makeText(this, "Saving videos needs Android 10 or newer.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Video.Media.DISPLAY_NAME, "Crow_Video_" + System.currentTimeMillis() + ".mp4");
+        values.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4");
+        values.put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/Crow Messenger");
+        values.put(MediaStore.Video.Media.IS_PENDING, 1);
+        Uri destination = null;
+        try {
+            destination = getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
+            if (destination == null) {
+                throw new IllegalStateException("Video destination unavailable");
+            }
+            try (InputStream input = getContentResolver().openInputStream(sourceUri);
+                 OutputStream output = getContentResolver().openOutputStream(destination)) {
+                if (input == null || output == null) {
+                    throw new IllegalStateException("Video stream unavailable");
+                }
+                byte[] buffer = new byte[16 * 1024];
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    if (count > 0) {
+                        output.write(buffer, 0, count);
+                    }
+                }
+            }
+            ContentValues complete = new ContentValues();
+            complete.put(MediaStore.Video.Media.IS_PENDING, 0);
+            getContentResolver().update(destination, complete, null, null);
+            Toast.makeText(this, "Saved to Movies/Crow Messenger.", Toast.LENGTH_SHORT).show();
+        } catch (Exception ex) {
+            if (destination != null) {
+                getContentResolver().delete(destination, null, null);
+            }
+            Toast.makeText(this, "Video could not be saved.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private static void setMessageImage(ImageView image, Uri uri) {
         image.setImageURI(uri);
         if (image.getDrawable() instanceof Animatable) {
             ((Animatable) image.getDrawable()).start();
+        }
+    }
+
+    private void setMessageMediaPreview(ImageView image, Uri uri) {
+        if (!isVideoUri(uri)) {
+            setMessageImage(image, uri);
+            return;
+        }
+        Bitmap thumbnail = videoThumbnailCache.get(uri.toString());
+        if (thumbnail == null) {
+            MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+            try {
+                if ("file".equals(uri.getScheme())) {
+                    retriever.setDataSource(uri.getPath());
+                } else {
+                    retriever.setDataSource(this, uri);
+                }
+                thumbnail = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                if (thumbnail != null) {
+                    videoThumbnailCache.put(uri.toString(), thumbnail);
+                }
+            } catch (RuntimeException ignored) {
+                thumbnail = null;
+            } finally {
+                try {
+                    retriever.release();
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        if (thumbnail != null) {
+            image.setImageBitmap(thumbnail);
+        } else {
+            image.setImageDrawable(null);
         }
     }
 
@@ -4540,7 +4709,7 @@ public class MainActivity extends Activity {
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(10), dp(12), dp(10), dp(28));
-        TextView loading = text("Loading pictures...", 15, MUTED, Typeface.NORMAL);
+        TextView loading = text("Loading media...", 15, MUTED, Typeface.NORMAL);
         loading.setGravity(Gravity.CENTER);
         loading.setPadding(0, dp(40), 0, 0);
         content.addView(loading, new LinearLayout.LayoutParams(-1, -2));
@@ -4574,10 +4743,10 @@ public class MainActivity extends Activity {
     private void renderConversationMedia(LinearLayout content, List<ChatMessage> pictures) {
         content.removeAllViews();
         if (pictures == null || pictures.isEmpty()) {
-            content.addView(emptyStateView("No pictures yet", "Pictures from this conversation will appear here.", true), new LinearLayout.LayoutParams(-1, dp(430)));
+            content.addView(emptyStateView("No media yet", "Pictures and videos from this conversation will appear here.", true), new LinearLayout.LayoutParams(-1, dp(430)));
             return;
         }
-        TextView count = text(pictures.size() == 1 ? "1 picture" : pictures.size() + " pictures", 14, MUTED, Typeface.NORMAL);
+        TextView count = text(pictures.size() == 1 ? "1 media item" : pictures.size() + " media items", 14, MUTED, Typeface.NORMAL);
         count.setPadding(dp(4), 0, dp(4), dp(10));
         content.addView(count, new LinearLayout.LayoutParams(-1, -2));
         for (int start = pictures.size() - 1; start >= 0; start -= 3) {
@@ -4593,9 +4762,11 @@ public class MainActivity extends Activity {
                 ChatMessage message = pictures.get(index);
                 ImageView image = new ImageView(this);
                 image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                setMessageImage(image, messageImageUri(message.imageUri));
+                setMessageMediaPreview(image, messageImageUri(message.imageUri));
                 image.setBackgroundColor(SURFACE);
-                image.setContentDescription("Picture from " + SmsStore.formatMessageTimestamp(this, message.dateMillis));
+                Uri mediaUri = messageImageUri(message.imageUri);
+                image.setContentDescription((isVideoUri(mediaUri) ? "Video" : "Picture")
+                        + " from " + SmsStore.formatMessageTimestamp(this, message.dateMillis));
                 setFeedbackClickListener(image, v -> showPicture(message.imageUri));
                 LinearLayout.LayoutParams imageParams = new LinearLayout.LayoutParams(0, dp(112), 1);
                 imageParams.setMargins(dp(3), dp(3), dp(3), dp(3));

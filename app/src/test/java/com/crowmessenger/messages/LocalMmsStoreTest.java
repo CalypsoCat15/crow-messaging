@@ -559,6 +559,41 @@ public class LocalMmsStoreTest {
     }
 
     @Test
+    public void replaceArchivedMedia_repairsMisidentifiedVideoAndDeletesBadImage() throws Exception {
+        String archiveId = "carrier-video-repair";
+        File mediaDir = MmsFiles.appFileDir(context, MmsFiles.IMAGES_DIR);
+        File badImage = new File(mediaDir, archiveId + ".jpg");
+        File video = new File(mediaDir, archiveId + ".mp4");
+        Files.write(badImage.toPath(), new byte[] { 1, 2, 3 });
+        Files.write(video.toPath(), new byte[] { 0, 0, 0, 8, 'f', 't', 'y', 'p' });
+        LocalMmsStore.saveImage(
+                context,
+                "15551234567",
+                "15551234567",
+                "M%",
+                Uri.fromFile(badImage).toString(),
+                3000L
+        );
+
+        assertEquals(
+                "15551234567",
+                LocalMmsStore.replaceArchivedMedia(
+                        context,
+                        archiveId,
+                        "",
+                        Uri.fromFile(video).toString()
+                )
+        );
+
+        List<ChatMessage> messages = LocalMmsStore.loadForAddress(context, "15551234567");
+        assertEquals(1, messages.size());
+        assertEquals(LocalMmsStore.VIDEO_MESSAGE, messages.get(0).body);
+        assertEquals(Uri.fromFile(video).toString(), messages.get(0).imageUri);
+        assertFalse(badImage.exists());
+        assertTrue(video.exists());
+    }
+
+    @Test
     public void cleanupAttachmentNameMessages_removesMessagesWithoutAddress() {
         SharedPreferences prefs = context.getSharedPreferences("local_mms", Context.MODE_PRIVATE);
         String id = "missing-address";

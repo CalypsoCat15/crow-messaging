@@ -216,12 +216,13 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
         }
         int recovered = 0;
         for (File file : files) {
-            String createdImageUri = "";
+            String createdMediaUri = "";
             try {
                 byte[] pdu = Files.readAllBytes(file.toPath());
                 byte[] image = safeImage(context, pdu);
+                byte[] video = image.length == 0 ? safeVideo(context, pdu) : new byte[0];
                 String text = cleanDownloadedText(safeText(context, pdu));
-                if (image.length == 0 && TextUtils.isEmpty(text)) {
+                if (image.length == 0 && video.length == 0 && TextUtils.isEmpty(text)) {
                     continue;
                 }
                 String senderAddress = downloadedSenderAddress(pdu, "");
@@ -233,27 +234,28 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
                         senderAddress,
                         participants
                 );
-                if (image.length > 0) {
+                byte[] media = image.length > 0 ? image : video;
+                if (media.length > 0) {
                     String baseName = file.getName().substring(0, file.getName().length() - 4);
-                    File imageFile = new File(
+                    File mediaFile = new File(
                             MmsFiles.appFileDir(context, MmsFiles.IMAGES_DIR),
-                            baseName + imageExtension(image)
+                            baseName + (video.length > 0 ? ".mp4" : imageExtension(image))
                     );
-                    try (FileOutputStream output = new FileOutputStream(imageFile)) {
-                        output.write(image);
+                    try (FileOutputStream output = new FileOutputStream(mediaFile)) {
+                        output.write(media);
                     }
-                    createdImageUri = Uri.fromFile(imageFile).toString();
+                    createdMediaUri = Uri.fromFile(mediaFile).toString();
                 }
                 if (!LocalMmsStore.replaceClosestUnreadableMessage(
                         context,
                         conversationAddress,
                         senderAddress,
-                        text,
-                        createdImageUri,
+                        TextUtils.isEmpty(text) && video.length > 0 ? LocalMmsStore.VIDEO_MESSAGE : text,
+                        createdMediaUri,
                         file.lastModified()
                 )) {
-                    if (!TextUtils.isEmpty(createdImageUri)) {
-                        MmsFiles.deleteAppFileUri(context, MmsFiles.IMAGES_DIR, createdImageUri);
+                    if (!TextUtils.isEmpty(createdMediaUri)) {
+                        MmsFiles.deleteAppFileUri(context, MmsFiles.IMAGES_DIR, createdMediaUri);
                     }
                     continue;
                 }
@@ -262,10 +264,51 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
                 MessageUpdateBroadcaster.broadcastIncoming(context, conversationAddress);
                 MmsDebugStore.record(context, "Recovered an archived unreadable MMS.");
             } catch (Exception ex) {
-                if (!TextUtils.isEmpty(createdImageUri)) {
-                    MmsFiles.deleteAppFileUri(context, MmsFiles.IMAGES_DIR, createdImageUri);
+                if (!TextUtils.isEmpty(createdMediaUri)) {
+                    MmsFiles.deleteAppFileUri(context, MmsFiles.IMAGES_DIR, createdMediaUri);
                 }
                 MmsDebugStore.record(context, "Unreadable MMS recovery skipped: " + ex.getClass().getSimpleName());
+            }
+        }
+        return recovered;
+    }
+
+    static int recoverArchivedVideoMessages(Context context) {
+        File directory = MmsFiles.appFileDirPath(context, MmsFiles.RAW_DOWNLOADS_DIR);
+        File[] files = directory.listFiles(file -> file.isFile() && file.getName().endsWith(".pdu"));
+        if (files == null || files.length == 0) {
+            return 0;
+        }
+        int recovered = 0;
+        for (File file : files) {
+            try {
+                byte[] pdu = Files.readAllBytes(file.toPath());
+                byte[] video = safeVideo(context, pdu);
+                if (video.length == 0) {
+                    continue;
+                }
+                String archiveId = file.getName().substring(0, file.getName().length() - 4);
+                File videoFile = new File(MmsFiles.appFileDir(context, MmsFiles.IMAGES_DIR), archiveId + ".mp4");
+                if (!videoFile.exists() || videoFile.length() != video.length) {
+                    try (FileOutputStream output = new FileOutputStream(videoFile)) {
+                        output.write(video);
+                    }
+                }
+                String text = cleanDownloadedText(safeText(context, pdu));
+                String address = LocalMmsStore.replaceArchivedMedia(
+                        context,
+                        archiveId,
+                        text,
+                        Uri.fromFile(videoFile).toString()
+                );
+                if (TextUtils.isEmpty(address)) {
+                    continue;
+                }
+                recovered++;
+                MessageUpdateBroadcaster.broadcastIncoming(context, address);
+                MmsDebugStore.record(context, "Recovered an archived video MMS.");
+            } catch (Exception ex) {
+                MmsDebugStore.record(context, "Archived video recovery skipped: " + ex.getClass().getSimpleName());
             }
         }
         return recovered;
@@ -291,8 +334,10 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
                 + ", group=" + LocalMmsStore.isGroupAddress(conversationAddress)
                 + ", senderKnown=" + !TextUtils.isEmpty(senderAddress));
         byte[] image = safeImage(context, pdu);
+        byte[] video = image.length == 0 ? safeVideo(context, pdu) : new byte[0];
         String text = cleanDownloadedText(safeText(context, pdu));
         MmsDebugStore.record(context, "MMS extraction imageBytes=" + image.length
+                + ", videoBytes=" + video.length
                 + ", textLength=" + (TextUtils.isEmpty(text) ? 0 : text.length()));
         if (image.length > 0) {
             File outputDir = MmsFiles.appFileDir(context, MmsFiles.IMAGES_DIR);
@@ -303,6 +348,22 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
             LocalMmsStore.saveImage(context, conversationAddress, senderAddress, text, Uri.fromFile(imageFile).toString(), System.currentTimeMillis());
             MessageNotifier.showIncoming(context, conversationAddress, senderAddress, TextUtils.isEmpty(text) ? LocalMmsStore.PICTURE_MESSAGE : text);
             MmsDebugStore.record(context, "MMS image extracted and saved. text=" + !TextUtils.isEmpty(text));
+        } else if (video.length > 0) {
+            File outputDir = MmsFiles.appFileDir(context, MmsFiles.IMAGES_DIR);
+            File videoFile = new File(outputDir, id + ".mp4");
+            try (FileOutputStream stream = new FileOutputStream(videoFile)) {
+                stream.write(video);
+            }
+            LocalMmsStore.saveImage(
+                    context,
+                    conversationAddress,
+                    senderAddress,
+                    TextUtils.isEmpty(text) ? LocalMmsStore.VIDEO_MESSAGE : text,
+                    Uri.fromFile(videoFile).toString(),
+                    System.currentTimeMillis()
+            );
+            MessageNotifier.showIncoming(context, conversationAddress, senderAddress, TextUtils.isEmpty(text) ? LocalMmsStore.VIDEO_MESSAGE : text);
+            MmsDebugStore.record(context, "MMS video extracted and saved. text=" + !TextUtils.isEmpty(text));
         } else if (!TextUtils.isEmpty(text)) {
             LocalMmsStore.saveNotice(context, conversationAddress, senderAddress, text, System.currentTimeMillis());
             MessageNotifier.showIncoming(context, conversationAddress, senderAddress, text);
@@ -330,6 +391,15 @@ public class MmsDownloadedReceiver extends BroadcastReceiver {
             return MmsPduUtil.extractFirstImage(pdu);
         } catch (RuntimeException ex) {
             MmsDebugStore.record(context, "MMS image parsing failed: " + ex.getClass().getSimpleName());
+            return new byte[0];
+        }
+    }
+
+    private static byte[] safeVideo(Context context, byte[] pdu) {
+        try {
+            return MmsPduUtil.extractFirstVideo(pdu);
+        } catch (RuntimeException ex) {
+            MmsDebugStore.record(context, "MMS video parsing failed: " + ex.getClass().getSimpleName());
             return new byte[0];
         }
     }

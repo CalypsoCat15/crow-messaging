@@ -132,6 +132,9 @@ final class MmsPduUtil {
         if (multipartImage.length > 0) {
             return multipartImage;
         }
+        if (extractFirstVideo(pdu).length > 0) {
+            return new byte[0];
+        }
         byte[] jpeg = sliceBetween(pdu, new byte[] { (byte) 0xFF, (byte) 0xD8 }, new byte[] { (byte) 0xFF, (byte) 0xD9 }, true);
         if (jpeg.length > 0) {
             return jpeg;
@@ -141,6 +144,14 @@ final class MmsPduUtil {
             return png;
         }
         return sliceWebp(pdu);
+    }
+
+    static byte[] extractFirstVideo(byte[] pdu) {
+        if (pdu == null || pdu.length == 0) {
+            return new byte[0];
+        }
+        byte[] multipartVideo = extractMultipartVideo(pdu);
+        return multipartVideo.length > 0 ? multipartVideo : extractDeclaredMp4(pdu);
     }
 
     private static byte[] extractMultipartImage(byte[] pdu) {
@@ -165,8 +176,102 @@ final class MmsPduUtil {
         return bestImage;
     }
 
+    private static byte[] extractMultipartVideo(byte[] pdu) {
+        MultipartParse multipart = findMultipartParse(pdu);
+        if (multipart == null) {
+            return new byte[0];
+        }
+        byte[] bestVideo = new byte[0];
+        for (MmsPart part : multipart.parts) {
+            if (!part.mediaPart || !isVideoPartHeader(pdu, part.headerStart, part.headerEnd)) {
+                continue;
+            }
+            int dataStart = trimmedVideoStart(pdu, part.dataStart, part.dataEnd);
+            if (!looksLikeMp4Data(pdu, dataStart, part.dataEnd)) {
+                continue;
+            }
+            byte[] video = copyRange(pdu, dataStart, part.dataEnd);
+            if (video.length > bestVideo.length) {
+                bestVideo = video;
+            }
+        }
+        return bestVideo;
+    }
+
+    private static byte[] extractDeclaredMp4(byte[] pdu) {
+        int marker = indexOfAsciiIgnoreCase(pdu, "video/mp4", 0);
+        while (marker >= 0) {
+            int scanEnd = Math.min(pdu.length, marker + MAX_PART_HEADER_BYTES);
+            for (int ftyp = marker + "video/mp4".length(); ftyp + 4 <= scanEnd; ftyp++) {
+                if (pdu[ftyp] != 0x66 || pdu[ftyp + 1] != 0x74
+                        || pdu[ftyp + 2] != 0x79 || pdu[ftyp + 3] != 0x70) {
+                    continue;
+                }
+                int videoStart = ftyp - 4;
+                int videoEnd = mp4End(pdu, videoStart, pdu.length);
+                if (videoEnd > videoStart) {
+                    return copyRange(pdu, videoStart, videoEnd);
+                }
+            }
+            marker = indexOfAsciiIgnoreCase(pdu, "video/mp4", marker + 1);
+        }
+        return new byte[0];
+    }
+
+    private static int mp4End(byte[] data, int start, int limit) {
+        if (!looksLikeMp4Data(data, start, limit)) {
+            return -1;
+        }
+        int index = start;
+        int boxes = 0;
+        while (index + 8 <= limit && boxes < 128) {
+            long size = readUnsignedInt(data, index);
+            int headerSize = 8;
+            if (size == 1) {
+                if (index + 16 > limit) {
+                    return -1;
+                }
+                size = readUnsignedLong(data, index + 8);
+                headerSize = 16;
+            } else if (size == 0) {
+                return limit;
+            }
+            if (size < headerSize || size > Integer.MAX_VALUE || index + size > limit) {
+                return boxes > 0 ? index : -1;
+            }
+            index += (int) size;
+            boxes++;
+        }
+        return boxes > 0 ? index : -1;
+    }
+
+    private static long readUnsignedInt(byte[] data, int start) {
+        return ((long) data[start] & 0xFF) << 24
+                | ((long) data[start + 1] & 0xFF) << 16
+                | ((long) data[start + 2] & 0xFF) << 8
+                | ((long) data[start + 3] & 0xFF);
+    }
+
+    private static long readUnsignedLong(byte[] data, int start) {
+        long high = readUnsignedInt(data, start);
+        long low = readUnsignedInt(data, start + 4);
+        if ((high & 0x80000000L) != 0) {
+            return Long.MAX_VALUE;
+        }
+        return high << 32 | low;
+    }
+
+    private static boolean hasDeclaredTextContent(byte[] pdu) {
+        return indexOfAsciiIgnoreCase(pdu, "text/plain", 0) >= 0
+                || indexOfAsciiIgnoreCase(pdu, "<text", 0) >= 0;
+    }
+
     static String extractText(byte[] pdu) {
         if (pdu == null || pdu.length == 0) {
+            return "";
+        }
+
+        if (extractFirstVideo(pdu).length > 0 && !hasDeclaredTextContent(pdu)) {
             return "";
         }
 
@@ -405,6 +510,9 @@ final class MmsPduUtil {
             parts.add(new MmsPart(headerStart, headerEnd, dataStart, dataEnd, textPart, smilPart, mediaPart));
             index = dataEnd;
         }
+        if (confirmedContentTypeHeader) {
+            score += 50;
+        }
         return score > 0 ? new MultipartParse(parts, score - (start / 256), confirmedContentTypeHeader) : null;
     }
 
@@ -426,6 +534,19 @@ final class MmsPduUtil {
             return false;
         }
         return contentTypeIsSmil(pdu, contentType.start, contentType.end);
+    }
+
+    private static boolean isVideoPartHeader(byte[] pdu, int start, int end) {
+        ContentTypeRange contentType = partContentTypeRange(pdu, start, end);
+        if (contentType == null) {
+            return false;
+        }
+        String value = readTextString(
+                pdu,
+                contentType.start,
+                Math.min(contentType.end, contentType.start + PART_CONTENT_TYPE_SCAN_BYTES)
+        ).toLowerCase(Locale.US);
+        return value.equals("video/mp4") || value.startsWith("video/mp4;");
     }
 
     private static ContentTypeRange partContentTypeRange(byte[] pdu, int start, int end) {
@@ -489,10 +610,12 @@ final class MmsPduUtil {
 
     private static boolean looksLikeMediaPart(byte[] pdu, int headerStart, int headerEnd, int dataStart, int dataEnd) {
         return indexOfAsciiIgnoreCase(pdu, "image/", headerStart, headerEnd) >= 0
+                || indexOfAsciiIgnoreCase(pdu, "video/", headerStart, headerEnd) >= 0
                 || startsWith(pdu, dataStart, dataEnd, new byte[] { (byte) 0xFF, (byte) 0xD8 })
                 || startsWith(pdu, dataStart, dataEnd, new byte[] { (byte) 0x89, 0x50, 0x4E, 0x47 })
                 || startsWith(pdu, dataStart, dataEnd, new byte[] { 0x47, 0x49, 0x46, 0x38 })
-                || startsWith(pdu, dataStart, dataEnd, new byte[] { 0x52, 0x49, 0x46, 0x46 });
+                || startsWith(pdu, dataStart, dataEnd, new byte[] { 0x52, 0x49, 0x46, 0x46 })
+                || looksLikeMp4Data(pdu, dataStart, dataEnd);
     }
 
     private static boolean looksLikeImageData(byte[] pdu, int dataStart, int dataEnd) {
@@ -510,6 +633,26 @@ final class MmsPduUtil {
             }
         }
         return start;
+    }
+
+    private static int trimmedVideoStart(byte[] pdu, int start, int end) {
+        int limit = Math.min(end, Math.min(pdu.length, start + 16));
+        for (int i = Math.max(0, start); i < limit; i++) {
+            if (looksLikeMp4Data(pdu, i, end)) {
+                return i;
+            }
+        }
+        return start;
+    }
+
+    private static boolean looksLikeMp4Data(byte[] pdu, int start, int end) {
+        return start >= 0
+                && start + 8 <= end
+                && start + 8 <= pdu.length
+                && pdu[start + 4] == 0x66
+                && pdu[start + 5] == 0x74
+                && pdu[start + 6] == 0x79
+                && pdu[start + 7] == 0x70;
     }
 
     private static void collectTextPartBody(byte[] pdu, int start, int end, List<TextCandidate> candidates) {

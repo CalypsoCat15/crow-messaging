@@ -16,6 +16,7 @@ import java.util.Set;
 
 final class LocalMmsStore {
     static final String PICTURE_MESSAGE = "Picture message";
+    static final String VIDEO_MESSAGE = "Video message";
     static final String DOWNLOAD_FAILED_MESSAGE = "Picture message could not be downloaded.";
     static final String DISPLAY_FAILED_MESSAGE = "Picture message could not be displayed.";
     static final String UNREADABLE_MESSAGE = "Message received, but Crow Messenger could not read it yet.";
@@ -308,7 +309,7 @@ final class LocalMmsStore {
             return false;
         }
         SharedPreferences.Editor editor = prefs.edit();
-        editor.putString(bodyKey(bestId), TextUtils.isEmpty(body) ? PICTURE_MESSAGE : body);
+        editor.putString(bodyKey(bestId), TextUtils.isEmpty(body) ? defaultMediaBody(imageUri) : body);
         if (!TextUtils.isEmpty(cleanSender)) {
             editor.putString(senderKey(bestId), cleanSender);
         }
@@ -316,6 +317,60 @@ final class LocalMmsStore {
             editor.putString(imageKey(bestId), imageUri);
         }
         return editor.commit();
+    }
+
+    static synchronized String replaceArchivedMedia(
+            Context context,
+            String archiveId,
+            String body,
+            String mediaUri
+    ) {
+        if (TextUtils.isEmpty(archiveId) || TextUtils.isEmpty(mediaUri)) {
+            return "";
+        }
+        SharedPreferences prefs = prefs(context);
+        for (String id : savedIds(prefs)) {
+            if (isOutgoing(prefs, id)) {
+                continue;
+            }
+            String previousUri = prefs.getString(imageKey(id), "");
+            if (!archiveId.equals(mediaFileStem(previousUri))) {
+                continue;
+            }
+            String replacementBody = TextUtils.isEmpty(body) ? VIDEO_MESSAGE : body;
+            if (TextUtils.equals(previousUri, mediaUri)
+                    && TextUtils.equals(prefs.getString(bodyKey(id), ""), replacementBody)) {
+                return "";
+            }
+            if (!prefs.edit()
+                    .putString(bodyKey(id), replacementBody)
+                    .putString(imageKey(id), mediaUri)
+                    .commit()) {
+                return "";
+            }
+            if (!TextUtils.equals(previousUri, mediaUri)) {
+                deleteStoredImage(context, previousUri);
+            }
+            return prefs.getString(addressKey(id), "");
+        }
+        return "";
+    }
+
+    private static String mediaFileStem(String mediaUri) {
+        if (TextUtils.isEmpty(mediaUri)) {
+            return "";
+        }
+        try {
+            Uri uri = Uri.parse(mediaUri);
+            if (TextUtils.isEmpty(uri.getPath())) {
+                return "";
+            }
+            String name = new File(uri.getPath()).getName();
+            int extension = name.lastIndexOf('.');
+            return extension > 0 ? name.substring(0, extension) : name;
+        } catch (RuntimeException ignored) {
+            return "";
+        }
     }
 
     static synchronized void cleanupAttachmentNameMessages(Context context) {
@@ -505,7 +560,7 @@ final class LocalMmsStore {
             cleanBody = MmsPduUtil.cleanDisplayText(cleanBody);
         }
         if (TextUtils.isEmpty(cleanBody) && !TextUtils.isEmpty(cleanImageUri)) {
-            cleanBody = PICTURE_MESSAGE;
+            cleanBody = defaultMediaBody(cleanImageUri);
         }
         if (TextUtils.isEmpty(cleanAddress) || (TextUtils.isEmpty(cleanBody) && TextUtils.isEmpty(cleanImageUri))) {
             return false;
@@ -528,6 +583,12 @@ final class LocalMmsStore {
         }
         editor.apply();
         return true;
+    }
+
+    private static String defaultMediaBody(String mediaUri) {
+        return mediaUri != null && mediaUri.toLowerCase(Locale.US).endsWith(".mp4")
+                ? VIDEO_MESSAGE
+                : PICTURE_MESSAGE;
     }
 
     private static String normalizedConversationAddress(String address) {
