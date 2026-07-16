@@ -2936,7 +2936,22 @@ public class MainActivity extends Activity {
     }
 
     private View messageActionRow(String option, View.OnClickListener listener) {
-        boolean destructive = "Delete message".equals(option);
+        return crowActionRow(
+                option,
+                messageActionDescription(option),
+                messageActionIcon(option),
+                "Delete message".equals(option),
+                listener
+        );
+    }
+
+    private View crowActionRow(
+            String labelText,
+            String descriptionText,
+            int iconResource,
+            boolean destructive,
+            View.OnClickListener listener
+    ) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -2949,17 +2964,18 @@ public class MainActivity extends Activity {
         });
 
         ImageView icon = new ImageView(this);
-        icon.setImageResource(messageActionIcon(option));
+        icon.setImageResource(iconResource);
         icon.setPadding(dp(9), dp(9), dp(9), dp(9));
         icon.setBackground(destructive ? roundedBackground(DANGER, 18) : primaryGradientBackground(18));
+        icon.setContentDescription(null);
         row.addView(icon, new LinearLayout.LayoutParams(dp(38), dp(38)));
 
         LinearLayout copy = new LinearLayout(this);
         copy.setOrientation(LinearLayout.VERTICAL);
         copy.setPadding(dp(12), 0, 0, 0);
-        TextView label = text(option, 16, destructive ? DANGER : TEXT, Typeface.BOLD);
+        TextView label = text(labelText, 16, destructive ? DANGER : TEXT, Typeface.BOLD);
         copy.addView(label, new LinearLayout.LayoutParams(-1, -2));
-        TextView description = text(messageActionDescription(option), 12, MUTED, Typeface.NORMAL);
+        TextView description = text(descriptionText, 12, MUTED, Typeface.NORMAL);
         description.setSingleLine(true);
         description.setEllipsize(TextUtils.TruncateAt.END);
         copy.addView(description, new LinearLayout.LayoutParams(-1, -2));
@@ -4079,23 +4095,40 @@ public class MainActivity extends Activity {
     private void showCrowMenu(String title, List<String> options, MenuChoiceHandler handler) {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(18), dp(18), dp(18), dp(12));
-        panel.setBackground(roundedBackground(CHAT_HEADER, 28));
+        panel.setPadding(dp(18), dp(17), dp(18), dp(12));
+        panel.setBackground(roundedBackground(CHAT_HEADER, 30));
 
-        TextView heading = text(title, 21, TEXT, Typeface.BOLD);
+        TextView eyebrow = text("CROW MENU", 11, MINT, Typeface.BOLD);
+        eyebrow.setGravity(Gravity.CENTER);
+        panel.addView(eyebrow, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView heading = text(title, 22, TEXT, Typeface.BOLD);
         heading.setSingleLine(true);
         heading.setEllipsize(TextUtils.TruncateAt.END);
         heading.setGravity(Gravity.CENTER);
-        heading.setPadding(0, 0, 0, dp(10));
+        heading.setPadding(0, dp(3), 0, 0);
         panel.addView(heading, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView subtitle = text(crowMenuSubtitle(title), 13, MUTED, Typeface.NORMAL);
+        subtitle.setSingleLine(true);
+        subtitle.setEllipsize(TextUtils.TruncateAt.END);
+        subtitle.setGravity(Gravity.CENTER);
+        subtitle.setPadding(0, dp(2), 0, dp(9));
+        panel.addView(subtitle, new LinearLayout.LayoutParams(-1, -2));
 
         AlertDialog dialog = new AlertDialog.Builder(this).create();
         for (String option : options) {
-            Button button = actionButton(option, v -> {
+            boolean destructive = isDestructiveMenuOption(option);
+            panel.addView(crowActionRow(
+                    option,
+                    crowMenuOptionDescription(option),
+                    crowMenuOptionIcon(option),
+                    destructive,
+                    v -> {
                 dialog.dismiss();
                 handler.onChoice(option);
-            });
-            panel.addView(button);
+                    }
+            ));
         }
 
         Button cancel = new Button(this);
@@ -4104,10 +4137,14 @@ public class MainActivity extends Activity {
         cancel.setTextColor(MINT);
         cancel.setTextSize(15);
         cancel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        cancel.setBackground(roundedBackground(SURFACE, 22));
-        cancel.setOnClickListener(v -> dialog.dismiss());
-        LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(-1, dp(48));
-        cancelParams.setMargins(0, dp(7), 0, dp(2));
+        cancel.setBackground(roundedBackground(SURFACE, 20));
+        applyPressFeedback(cancel);
+        cancel.setOnClickListener(v -> {
+            performTapFeedback(v);
+            dialog.dismiss();
+        });
+        LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(-1, dp(46));
+        cancelParams.setMargins(0, dp(5), 0, 0);
         panel.addView(cancel, cancelParams);
 
         dialog.setView(panel);
@@ -4115,7 +4152,233 @@ public class MainActivity extends Activity {
         Window window = dialog.getWindow();
         if (window != null) {
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int availableWidth = getResources().getDisplayMetrics().widthPixels - dp(32);
+            window.setLayout(Math.min(availableWidth, dp(440)), WindowManager.LayoutParams.WRAP_CONTENT);
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams attributes = window.getAttributes();
+            attributes.dimAmount = 0.72f;
+            window.setAttributes(attributes);
         }
+    }
+
+    private String crowMenuSubtitle(String title) {
+        if ("Messages".equals(title)) {
+            return "Crow Messenger tools";
+        }
+        if ("Appearance & typing".equals(title)) {
+            return "Make Crow comfortable for you";
+        }
+        if ("Spam protection".equals(title)) {
+            return "Control unwanted messages";
+        }
+        if ("Messaging setup".equals(title)) {
+            return "Connection and app diagnostics";
+        }
+        if ("Backup & restore".equals(title)) {
+            return "Protect your Crow settings";
+        }
+        if ("Scheduling".equals(title)) {
+            return "Plan messages for later";
+        }
+        if ("Notifications & sound".equals(title)) {
+            return "Choose how this chat alerts you";
+        }
+        if ("Privacy & cleanup".equals(title)) {
+            return "Manage this conversation";
+        }
+        if ("Text size".equals(title)) {
+            return "Choose a comfortable reading size";
+        }
+        return "Conversation options";
+    }
+
+    private boolean isDestructiveMenuOption(String option) {
+        return "Delete forever".equals(option) || "Move to trash".equals(option);
+    }
+
+    private int crowMenuOptionIcon(String option) {
+        String normalized = option.replace(" (current)", "");
+        if (normalized.contains("inbox") || normalized.contains("spam & blocked")) {
+            return R.drawable.ic_menu_inbox;
+        }
+        if ("Mark all messages read".equals(normalized)) {
+            return R.drawable.ic_menu_check;
+        }
+        if (normalized.contains("Trash") || normalized.contains("trash") || normalized.contains("Delete")) {
+            return R.drawable.ic_action_delete;
+        }
+        if (normalized.contains("Appearance") || normalized.contains("Text size")
+                || isTextSizeOption(normalized)) {
+            return R.drawable.ic_menu_text;
+        }
+        if (normalized.contains("microphone")) {
+            return R.drawable.ic_menu_mic;
+        }
+        if (normalized.contains("Spam") || normalized.contains("spam")
+                || normalized.contains("Block") || normalized.contains("block")
+                || normalized.contains("Privacy")) {
+            return R.drawable.ic_menu_shield;
+        }
+        if (normalized.contains("Messaging setup") || normalized.contains("MMS status")) {
+            return R.drawable.ic_menu_tools;
+        }
+        if (normalized.contains("Default messaging app")) {
+            return R.drawable.ic_menu_phone;
+        }
+        if (normalized.contains("troubleshooting")) {
+            return R.drawable.ic_action_copy;
+        }
+        if (normalized.contains("Backup")) {
+            return R.drawable.ic_menu_backup;
+        }
+        if (normalized.contains("Export")) {
+            return R.drawable.ic_action_save;
+        }
+        if (normalized.contains("Restore") || normalized.contains("default notification")) {
+            return R.drawable.ic_action_retry;
+        }
+        if (normalized.contains("Search")) {
+            return R.drawable.ic_menu_search;
+        }
+        if (normalized.contains("Photos") || normalized.contains("media")) {
+            return R.drawable.ic_action_image;
+        }
+        if (normalized.contains("Pin") || normalized.contains("pin")) {
+            return R.drawable.ic_menu_pin;
+        }
+        if (normalized.contains("Schedul")) {
+            return R.drawable.ic_menu_schedule;
+        }
+        if (normalized.contains("sound") || normalized.contains("Mute") || normalized.contains("mute")
+                || normalized.contains("Notification")) {
+            return R.drawable.ic_menu_bell;
+        }
+        if (normalized.contains("info")) {
+            return R.drawable.ic_action_info;
+        }
+        return R.drawable.ic_menu_settings;
+    }
+
+    private boolean isTextSizeOption(String option) {
+        for (String label : TextSizePrefs.labels()) {
+            if (label.equals(option)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String crowMenuOptionDescription(String option) {
+        String normalized = option.replace(" (current)", "");
+        if (normalized.contains("Normal inbox") || normalized.contains("normal inbox")) {
+            return "Return to your regular conversations";
+        }
+        if (normalized.contains("spam & blocked")) {
+            return "Keep unwanted messages separate";
+        }
+        if ("Mark all messages read".equals(normalized)) {
+            return "Clear every unread indicator";
+        }
+        if ("Trash".equals(normalized)) {
+            return "Restore or permanently delete chats";
+        }
+        if ("Appearance & typing".equals(normalized)) {
+            return "Text size, microphone, and display options";
+        }
+        if ("Spam protection".equals(normalized)) {
+            return "Review blocked messages and filter rules";
+        }
+        if ("Messaging setup".equals(normalized)) {
+            return "MMS, default app, and diagnostics";
+        }
+        if ("Backup & restore".equals(normalized)) {
+            return "Save or restore privacy-safe settings";
+        }
+        if ("Export settings".equals(normalized)) {
+            return "Save a privacy-safe settings file";
+        }
+        if ("Restore settings".equals(normalized)) {
+            return "Load settings from a Crow backup";
+        }
+        if ("Text size".equals(normalized)) {
+            return "Adjust message and inbox text";
+        }
+        if (isTextSizeOption(normalized)) {
+            return option.endsWith(" (current)") ? "Currently selected" : "Use this reading size";
+        }
+        if (normalized.contains("microphone")) {
+            return normalized.startsWith("Show") ? "Add voice typing to the composer" : "Remove voice typing from the composer";
+        }
+        if ("Spam filter rules".equals(normalized)) {
+            return "Choose words filtered from unknown senders";
+        }
+        if ("MMS status".equals(normalized)) {
+            return "Check picture and group messaging setup";
+        }
+        if ("Default messaging app".equals(normalized)) {
+            return "Make Crow your phone's SMS app";
+        }
+        if ("Copy troubleshooting report".equals(normalized)) {
+            return "Copy a report without private message text";
+        }
+        if ("Conversation info".equals(normalized)) {
+            return "View participants and conversation details";
+        }
+        if ("Search conversation".equals(normalized)) {
+            return "Find words in this message history";
+        }
+        if ("Photos & media".equals(normalized)) {
+            return "Browse shared pictures in one place";
+        }
+        if (normalized.contains("Pin conversation") || normalized.contains("Unpin conversation")) {
+            return normalized.startsWith("Unpin") ? "Return this chat to normal ordering" : "Keep this chat at the top of the inbox";
+        }
+        if ("Scheduling".equals(normalized)) {
+            return "Write now and send later";
+        }
+        if ("Schedule message".equals(normalized)) {
+            return "Choose a future date and time";
+        }
+        if ("Scheduled messages".equals(normalized)) {
+            return "Review messages waiting to send";
+        }
+        if ("Notifications & sound".equals(normalized)) {
+            return "Customize alerts for this conversation";
+        }
+        if (normalized.contains("Mute conversation") || normalized.contains("Unmute conversation")) {
+            return normalized.startsWith("Unmute") ? "Turn alerts back on" : "Silence alerts from this chat";
+        }
+        if ("Custom notification sound".equals(normalized)) {
+            return "Choose a sound for this conversation";
+        }
+        if ("Use default notification sound".equals(normalized)) {
+            return "Return to Crow's normal alert sound";
+        }
+        if ("Privacy & cleanup".equals(normalized)) {
+            return "Spam, blocking, and trash controls";
+        }
+        if ("Mark as spam".equals(normalized)) {
+            return "Move this conversation out of the inbox";
+        }
+        if ("Not spam".equals(normalized)) {
+            return "Return this conversation to the inbox";
+        }
+        if ("Block sender".equals(normalized)) {
+            return "Keep future messages out of the inbox";
+        }
+        if ("Unblock sender".equals(normalized)) {
+            return "Allow messages into the inbox again";
+        }
+        if ("Move to trash".equals(normalized)) {
+            return "Remove this conversation from the inbox";
+        }
+        if ("Restore".equals(normalized)) {
+            return "Return this conversation to the inbox";
+        }
+        if ("Delete forever".equals(normalized)) {
+            return "Permanently remove this conversation";
+        }
+        return "Open this option";
     }
 
     private void showTextSizeMenu() {
