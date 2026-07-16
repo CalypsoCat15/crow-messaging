@@ -159,6 +159,7 @@ public class MainActivity extends Activity {
     private static final int DIVIDER = Color.rgb(62, 64, 66);
     private static final int TEXT = Color.rgb(245, 245, 245);
     private static final int MUTED = Color.rgb(165, 165, 170);
+    private static final int DANGER = Color.rgb(255, 118, 132);
     private static final int MAX_ATTACHED_IMAGES = 10;
 
     private enum ScreenMode {
@@ -2873,30 +2874,172 @@ public class MainActivity extends Activity {
         }
         options.add("Message details");
 
-        new AlertDialog.Builder(this)
-                .setTitle("Message options")
-                .setItems(options.toArray(new String[0]), (dialog, which) -> {
-                    String choice = options.get(which);
-                    if ("Copy text".equals(choice)) {
-                        copyMessageText(displayableText(message));
-                    } else if ("Forward".equals(choice)) {
-                        forwardMessage(message);
-                    } else if ("View picture".equals(choice)) {
-                        showPicture(message.imageUri);
-                    } else if ("Save picture".equals(choice)) {
-                        Uri uri = messageImageUri(message.imageUri);
-                        if (uri != null) {
-                            savePictureToGallery(uri);
-                        }
-                    } else if ("Retry sending".equals(choice)) {
-                        confirmRetryFailedMessage(message);
-                    } else if ("Delete message".equals(choice)) {
-                        confirmDeleteMessage(message);
-                    } else if ("Message details".equals(choice)) {
-                        showMessageDetails(message);
-                    }
-                })
-                .show();
+        showMessageActionMenu(message, options);
+    }
+
+    private void showMessageActionMenu(ChatMessage message, List<String> options) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(18), dp(17), dp(18), dp(12));
+        panel.setBackground(roundedBackground(CHAT_HEADER, 30));
+
+        TextView eyebrow = text("MESSAGE", 11, MINT, Typeface.BOLD);
+        eyebrow.setGravity(Gravity.CENTER);
+        panel.addView(eyebrow, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView heading = text("Message actions", 22, TEXT, Typeface.BOLD);
+        heading.setGravity(Gravity.CENTER);
+        heading.setPadding(0, dp(3), 0, 0);
+        panel.addView(heading, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView subtitle = text(message.outgoing ? "Sent message" : "Received message", 13, MUTED, Typeface.NORMAL);
+        subtitle.setGravity(Gravity.CENTER);
+        subtitle.setPadding(0, dp(2), 0, dp(9));
+        panel.addView(subtitle, new LinearLayout.LayoutParams(-1, -2));
+
+        AlertDialog dialog = new AlertDialog.Builder(this).create();
+        for (String option : options) {
+            panel.addView(messageActionRow(option, v -> {
+                dialog.dismiss();
+                handleMessageAction(message, option);
+            }));
+        }
+
+        Button cancel = new Button(this);
+        cancel.setText(R.string.cancel_button);
+        cancel.setAllCaps(false);
+        cancel.setTextColor(MINT);
+        cancel.setTextSize(15);
+        cancel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        cancel.setBackground(roundedBackground(SURFACE, 20));
+        applyPressFeedback(cancel);
+        cancel.setOnClickListener(v -> {
+            performTapFeedback(v);
+            dialog.dismiss();
+        });
+        LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(-1, dp(46));
+        cancelParams.setMargins(0, dp(5), 0, 0);
+        panel.addView(cancel, cancelParams);
+
+        dialog.setView(panel);
+        dialog.show();
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int availableWidth = getResources().getDisplayMetrics().widthPixels - dp(32);
+            window.setLayout(Math.min(availableWidth, dp(440)), WindowManager.LayoutParams.WRAP_CONTENT);
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams attributes = window.getAttributes();
+            attributes.dimAmount = 0.72f;
+            window.setAttributes(attributes);
+        }
+    }
+
+    private View messageActionRow(String option, View.OnClickListener listener) {
+        boolean destructive = "Delete message".equals(option);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(10), dp(7), dp(13), dp(7));
+        row.setBackground(messageActionRowBackground(destructive));
+        applyPressFeedback(row);
+        row.setOnClickListener(v -> {
+            performTapFeedback(v);
+            listener.onClick(v);
+        });
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(messageActionIcon(option));
+        icon.setPadding(dp(9), dp(9), dp(9), dp(9));
+        icon.setBackground(destructive ? roundedBackground(DANGER, 18) : primaryGradientBackground(18));
+        row.addView(icon, new LinearLayout.LayoutParams(dp(38), dp(38)));
+
+        LinearLayout copy = new LinearLayout(this);
+        copy.setOrientation(LinearLayout.VERTICAL);
+        copy.setPadding(dp(12), 0, 0, 0);
+        TextView label = text(option, 16, destructive ? DANGER : TEXT, Typeface.BOLD);
+        copy.addView(label, new LinearLayout.LayoutParams(-1, -2));
+        TextView description = text(messageActionDescription(option), 12, MUTED, Typeface.NORMAL);
+        description.setSingleLine(true);
+        description.setEllipsize(TextUtils.TruncateAt.END);
+        copy.addView(description, new LinearLayout.LayoutParams(-1, -2));
+        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(58));
+        params.setMargins(0, dp(4), 0, dp(4));
+        row.setLayoutParams(params);
+        return row;
+    }
+
+    private GradientDrawable messageActionRowBackground(boolean destructive) {
+        GradientDrawable background = roundedBackground(SURFACE, 20);
+        background.setStroke(dp(1), destructive ? DANGER : DIVIDER);
+        return background;
+    }
+
+    private int messageActionIcon(String option) {
+        if ("Copy text".equals(option)) {
+            return R.drawable.ic_action_copy;
+        }
+        if ("Forward".equals(option)) {
+            return R.drawable.ic_action_forward;
+        }
+        if ("View picture".equals(option)) {
+            return R.drawable.ic_action_image;
+        }
+        if ("Save picture".equals(option)) {
+            return R.drawable.ic_action_save;
+        }
+        if ("Retry sending".equals(option)) {
+            return R.drawable.ic_action_retry;
+        }
+        if ("Delete message".equals(option)) {
+            return R.drawable.ic_action_delete;
+        }
+        return R.drawable.ic_action_info;
+    }
+
+    private String messageActionDescription(String option) {
+        if ("Copy text".equals(option)) {
+            return "Copy this text to the clipboard";
+        }
+        if ("Forward".equals(option)) {
+            return "Send it to another conversation";
+        }
+        if ("View picture".equals(option)) {
+            return "Open the picture full screen";
+        }
+        if ("Save picture".equals(option)) {
+            return "Add the picture to your Gallery";
+        }
+        if ("Retry sending".equals(option)) {
+            return "Try sending this message again";
+        }
+        if ("Delete message".equals(option)) {
+            return "Remove it from this phone";
+        }
+        return "View time, direction, and status";
+    }
+
+    private void handleMessageAction(ChatMessage message, String choice) {
+        if ("Copy text".equals(choice)) {
+            copyMessageText(displayableText(message));
+        } else if ("Forward".equals(choice)) {
+            forwardMessage(message);
+        } else if ("View picture".equals(choice)) {
+            showPicture(message.imageUri);
+        } else if ("Save picture".equals(choice)) {
+            Uri uri = messageImageUri(message.imageUri);
+            if (uri != null) {
+                savePictureToGallery(uri);
+            }
+        } else if ("Retry sending".equals(choice)) {
+            confirmRetryFailedMessage(message);
+        } else if ("Delete message".equals(choice)) {
+            confirmDeleteMessage(message);
+        } else if ("Message details".equals(choice)) {
+            showMessageDetails(message);
+        }
     }
 
     private boolean isRetryableFailedMessage(ChatMessage message) {
