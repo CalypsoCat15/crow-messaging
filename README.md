@@ -10,12 +10,22 @@
 </p>
 
 <p align="center">
-  <strong>358 automated tests</strong> &bull; Native Android &bull; SMS + carrier MMS &bull; No ads or analytics
+  <strong>373 automated tests</strong> &bull; Native Android &bull; SMS + carrier MMS &bull; No ads or analytics
 </p>
+
+## At a Glance
+
+| | Crow Messenger |
+|---|---|
+| **Everyday messaging** | One-to-one and group SMS/MMS, pictures, captions, animated GIFs, drafts, scheduled sends, and notifications |
+| **Media tools** | Gallery and Camera attachments, direct Android sharing, multi-picture sending, orientation correction, and conversation media browsing |
+| **Reliability** | Fast inbox updates, accurate unread state, failed-send recovery, interrupted-download recovery, and duplicate group-thread prevention |
+| **Control** | Search with highlighted matches, pinned chats, Trash and restore, Spam & Blocked, per-contact sounds, and long-press message actions |
+| **Privacy** | On-device message data, no ads, no analytics, no account system, and privacy-safe diagnostics and settings backups |
 
 ## About the App
 
-Crow Messenger is a native Android messaging app created as a modern, personal alternative to Samsung Messages. What began as a custom texting experience for a Galaxy S24+ has grown into a capable daily-use app with one-to-one and group messaging, picture sharing, notifications, contact-aware spam filtering, and a carefully polished interface.
+Crow Messenger is an independently designed native Android messaging app created as a modern, personal alternative to Samsung Messages. What began as a custom texting experience for a Galaxy S24+ has grown into a capable daily-use app with one-to-one and group messaging, picture and GIF sharing, notifications, contact-aware spam filtering, powerful search, and a carefully polished interface.
 
 The app is designed around real-world use: conversations should open quickly, new messages should appear promptly, pictures and captions should arrive together, and useful controls should remain easy to find.
 
@@ -31,10 +41,12 @@ Its design is personal on purpose, while its engineering priorities are practica
 
 - Send and receive standard SMS messages
 - Send and receive MMS pictures with or without captions
+- Send animated GIFs from the keyboard directly into the open conversation
+- Automatically prepare oversized GIFs for the carrier limit while preserving their animation
 - Send and receive group texts and group pictures
 - Keep equivalent group conversations together instead of creating duplicate threads
 - Open incoming-message notifications directly in the correct conversation
-- Retry failed outgoing texts and recover interrupted MMS downloads
+- Retry failed outgoing texts and recover interrupted or initially unreadable MMS downloads
 - See clear Sending, Sent, and Failed status beneath outgoing messages
 - Reply or mark a conversation read directly from its notification
 - Save unfinished drafts and show them in the inbox
@@ -87,7 +99,7 @@ Its design is personal on purpose, while its engineering priorities are practica
 
 ## Quality
 
-Crow Messenger is backed by **358 automated tests** covering message parsing, conversation grouping, search accuracy, unread-state timing, contact-aware spam behavior, Android sharing intents, MMS handling, send-result recovery, scheduled messages, notifications, settings backup, and other core behavior. Android lint checks are also part of the verification process.
+Crow Messenger is backed by **373 automated tests** covering message parsing, conversation grouping, search accuracy, unread-state timing, contact-aware spam behavior, Android sharing intents, SMS/MMS handling, animated GIF preparation, send-result recovery, scheduled messages, notifications, settings backup, and other core behavior. Android lint checks are also part of the verification process.
 
 The project uses save points throughout development so working SMS and MMS behavior can be protected while new features are added.
 
