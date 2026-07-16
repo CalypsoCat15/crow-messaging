@@ -13,6 +13,25 @@
   <strong>373 automated tests</strong> &bull; Native Android &bull; SMS + carrier MMS &bull; No ads or analytics
 </p>
 
+## App Preview
+
+<p align="center">
+  <img src="artwork/showcase/crow-showcase.png" alt="Crow Messenger inbox, group picture conversation, message search, and organized settings" width="100%">
+</p>
+
+<p align="center">
+  <em>Real Crow Messenger features shown with entirely fictional contacts, messages, and phone data.</em>
+</p>
+
+<table>
+  <tr>
+    <td align="center"><img src="artwork/showcase/crow-demo-inbox.png" alt="Crow Messenger fictional inbox" width="240"><br><strong>Fast, personal inbox</strong></td>
+    <td align="center"><img src="artwork/showcase/crow-demo-thread.png" alt="Crow Messenger fictional group picture conversation" width="240"><br><strong>Group pictures and captions</strong></td>
+    <td align="center"><img src="artwork/showcase/crow-demo-search.png" alt="Crow Messenger fictional message search results" width="240"><br><strong>Search with highlighted matches</strong></td>
+    <td align="center"><img src="artwork/showcase/crow-demo-features.png" alt="Crow Messenger organized settings and tools" width="240"><br><strong>Useful tools, clearly organized</strong></td>
+  </tr>
+</table>
+
 ## At a Glance
 
 | | Crow Messenger |
