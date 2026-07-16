@@ -37,6 +37,13 @@ public class MmsImageSenderTest {
     }
 
     @Test
+    public void gifPayloadLimit_reservesRoomForMmsHeadersAndHonorsLowerCarrierLimits() {
+        assertEquals(900 * 1024, MmsImageSender.gifPayloadLimitForConfiguredMax(0));
+        assertEquals(440 * 1024, MmsImageSender.gifPayloadLimitForConfiguredMax(512 * 1024));
+        assertEquals(952 * 1024, MmsImageSender.gifPayloadLimitForConfiguredMax(1024 * 1024));
+    }
+
+    @Test
     public void recipientsForAddress_usesSingleRecipientForOneToOneThread() throws Exception {
         assertEquals(
                 Arrays.asList("5550102000"),

@@ -1,12 +1,16 @@
 package com.crowmessenger.messages;
 
+import android.Manifest;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
 import android.net.Uri;
+import android.os.PersistableBundle;
+import android.telephony.CarrierConfigManager;
 import android.telephony.SmsManager;
 import android.text.TextUtils;
 
@@ -26,6 +30,8 @@ import androidx.exifinterface.media.ExifInterface;
 final class MmsImageSender {
     private static final int MAX_IMAGE_BYTES = 900 * 1024;
     private static final int MAX_IMAGE_EDGE = 1280;
+    private static final int MAX_GIF_SOURCE_BYTES = 12 * 1024 * 1024;
+    private static final int MMS_ENVELOPE_RESERVE_BYTES = 72 * 1024;
 
     private MmsImageSender() {
     }
@@ -230,6 +236,22 @@ final class MmsImageSender {
         if (isGif(context, sourceImageUri)) {
             byte[] gif = readGif(context, sourceImageUri);
             if (hasGifSignature(gif)) {
+                int payloadLimit = gifPayloadLimit(context);
+                if (gif.length > payloadLimit) {
+                    try {
+                        byte[] compressed = GifMmsCompressor.compress(gif, payloadLimit);
+                        MmsDebugStore.record(
+                                context,
+                                "Compressed GIF for MMS. before=" + gif.length + ", after=" + compressed.length
+                        );
+                        gif = compressed;
+                    } catch (IOException ex) {
+                        throw new SmsSender.SendException(
+                                "That GIF could not be made small enough for carrier picture messaging.",
+                                ex
+                        );
+                    }
+                }
                 return new PreparedImage(gif, "image/gif", ".gif");
             }
         }
@@ -262,10 +284,8 @@ final class MmsImageSender {
             byte[] buffer = new byte[16 * 1024];
             int read;
             while ((read = stream.read(buffer)) != -1) {
-                if (output.size() + read > MAX_IMAGE_BYTES) {
-                    throw new SmsSender.SendException(
-                            "That GIF is too large for carrier picture messaging. Try a smaller GIF."
-                    );
+                if (output.size() + read > MAX_GIF_SOURCE_BYTES) {
+                    throw new SmsSender.SendException("That GIF is too large to prepare safely.");
                 }
                 output.write(buffer, 0, read);
             }
@@ -275,6 +295,32 @@ final class MmsImageSender {
         } catch (Exception ex) {
             throw new SmsSender.SendException("GIF could not be opened.", ex);
         }
+    }
+
+    static int gifPayloadLimit(Context context) {
+        int configuredLimit = 0;
+        try {
+            CarrierConfigManager carrierConfig = context.getSystemService(CarrierConfigManager.class);
+            if (carrierConfig != null
+                    && context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE)
+                    == PackageManager.PERMISSION_GRANTED) {
+                PersistableBundle values = carrierConfig.getConfigForSubId(
+                        SmsManager.getDefaultSmsSubscriptionId()
+                );
+                if (values != null) {
+                    configuredLimit = values.getInt(CarrierConfigManager.KEY_MMS_MAX_MESSAGE_SIZE_INT, 0);
+                }
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return gifPayloadLimitForConfiguredMax(configuredLimit);
+    }
+
+    static int gifPayloadLimitForConfiguredMax(int configuredLimit) {
+        if (configuredLimit <= MMS_ENVELOPE_RESERVE_BYTES) {
+            return MAX_IMAGE_BYTES;
+        }
+        return configuredLimit - MMS_ENVELOPE_RESERVE_BYTES;
     }
 
     private static boolean hasGifSignature(byte[] bytes) {
