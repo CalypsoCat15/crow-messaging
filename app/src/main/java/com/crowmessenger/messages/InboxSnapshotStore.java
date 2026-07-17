@@ -138,9 +138,11 @@ final class InboxSnapshotStore {
             boolean durable
     ) {
         List<Conversation> rows = loadVisible(context);
-        if (TextUtils.isEmpty(address)
-                || TextUtils.isEmpty(body)
-                || MessageNotifier.shouldSuppressIncoming(context, address, "", body)) {
+        if (TextUtils.isEmpty(address) || TextUtils.isEmpty(body)) {
+            return rows;
+        }
+        if (MessageNotifier.shouldSuppressIncoming(context, address, "", body)) {
+            SpamInboxSnapshotStore.upsertIncoming(context, address, body, dateMillis, durable);
             return rows;
         }
         TrashStore.restore(context, address);

@@ -329,6 +329,7 @@ public class MainActivity extends Activity {
                 runMaintenanceStep(appContext, "Pending MMS recovery", () -> MmsDownloadedReceiver.recoverPendingDownloads(appContext));
                 runMaintenanceStep(appContext, "Unreadable MMS recovery", () -> MmsDownloadedReceiver.recoverUnreadableArchives(appContext));
                 runMaintenanceStep(appContext, "MMS temporary file cleanup", () -> MmsFiles.cleanupStaleTemporaryFiles(appContext));
+                runMaintenanceStep(appContext, "Spam inbox snapshot", () -> SpamInboxSnapshotStore.seedIfNeeded(appContext));
             } finally {
                 finishStartupMaintenance();
             }
@@ -1692,8 +1693,10 @@ public class MainActivity extends Activity {
         String cacheKey = inboxCacheKey(blocked, query);
         if (TextUtils.isEmpty(query) && !TextUtils.equals(renderedInboxCacheKey, cacheKey)) {
             List<Conversation> cachedInbox = inboxRowsCache.get(cacheKey);
-            if (cachedInbox == null && !blocked) {
-                cachedInbox = InboxSnapshotStore.loadVisible(this);
+            if (cachedInbox == null) {
+                cachedInbox = blocked
+                        ? SpamInboxSnapshotStore.loadVisible(this)
+                        : InboxSnapshotStore.loadVisible(this);
                 if (!cachedInbox.isEmpty()) {
                     inboxRowsCache.put(cacheKey, cachedInbox);
                 }
@@ -1712,8 +1715,10 @@ public class MainActivity extends Activity {
         }
         if (inboxList.getChildCount() == 0) {
             List<Conversation> cachedRows = inboxRowsCache.get(cacheKey);
-            if (cachedRows == null && !blocked && TextUtils.isEmpty(query)) {
-                cachedRows = InboxSnapshotStore.loadVisible(this);
+            if (cachedRows == null && TextUtils.isEmpty(query)) {
+                cachedRows = blocked
+                        ? SpamInboxSnapshotStore.loadVisible(this)
+                        : InboxSnapshotStore.loadVisible(this);
                 if (!cachedRows.isEmpty()) {
                     inboxRowsCache.put(cacheKey, cachedRows);
                 }
@@ -1722,7 +1727,7 @@ public class MainActivity extends Activity {
                 renderInboxRows(cachedRows, blocked, cacheKey);
                 prefetchVisibleThreads(cachedRows, blocked);
             } else if (blocked && TextUtils.isEmpty(query)) {
-                renderInboxRows(new ArrayList<>(), true, cacheKey);
+                renderInboxLoading(cacheKey, "Loading spam & blocked...");
             }
         }
         long lastLoadedAt = blocked ? blockedInboxLoadedAtMillis : normalInboxLoadedAtMillis;
@@ -1743,6 +1748,8 @@ public class MainActivity extends Activity {
             }
             if (!blocked && TextUtils.isEmpty(query)) {
                 InboxSnapshotStore.save(appContext, conversations);
+            } else if (blocked && TextUtils.isEmpty(query)) {
+                SpamInboxSnapshotStore.save(appContext, conversations);
             }
             runOnUiThread(() -> {
                 if (isDestroyed() || inboxList == null || generation != inboxLoadGeneration) {
@@ -1767,12 +1774,16 @@ public class MainActivity extends Activity {
     }
 
     private void renderInboxSearchLoading(String cacheKey) {
+        renderInboxLoading(cacheKey, getString(R.string.searching_messages));
+    }
+
+    private void renderInboxLoading(String cacheKey, String message) {
         if (inboxList == null) {
             return;
         }
         renderedInboxCacheKey = cacheKey;
         inboxList.removeAllViews();
-        TextView loading = text(getString(R.string.searching_messages), 15, MUTED, Typeface.NORMAL);
+        TextView loading = text(message, 15, MUTED, Typeface.NORMAL);
         loading.setGravity(Gravity.CENTER);
         loading.setPadding(0, dp(42), 0, dp(20));
         inboxList.addView(loading, new LinearLayout.LayoutParams(-1, -2));
@@ -3988,8 +3999,10 @@ public class MainActivity extends Activity {
                 .setPositiveButton(blocked ? "Unblock" : "Block", (dialog, which) -> {
                     if (blocked) {
                         Blocklist.unblock(this, conversation.address);
+                        SpamInboxSnapshotStore.remove(this, conversation.address);
                     } else {
                         ConversationSuppression.block(this, conversation.address);
+                        SpamInboxSnapshotStore.upsert(this, conversation);
                     }
                     discardCachedInboxScreen();
                     showInbox();
@@ -4000,13 +4013,10 @@ public class MainActivity extends Activity {
 
     private void markConversationSpam(Conversation conversation) {
         ConversationSuppression.markSpam(this, conversation.address, conversation.threadId);
+        SpamInboxSnapshotStore.upsert(this, conversation);
         discardCachedInboxScreen();
         searchQuery = "";
         showingBlocked = true;
-        inboxRowsCache.put(
-                inboxCacheKey(true, ""),
-                new ArrayList<>(java.util.Collections.singletonList(conversation))
-        );
         blockedInboxLoadedAtMillis = 0L;
         Toast.makeText(this, "Moved to Spam & blocked.", Toast.LENGTH_SHORT).show();
         activeConversation = null;
@@ -4015,6 +4025,7 @@ public class MainActivity extends Activity {
 
     private void unmarkConversationSpam(Conversation conversation) {
         SpamFilter.unmarkSpam(this, conversation.address, conversation.threadId);
+        SpamInboxSnapshotStore.remove(this, conversation.address);
         discardCachedInboxScreen();
         Toast.makeText(this, "Moved back to normal inbox.", Toast.LENGTH_SHORT).show();
         activeConversation = null;

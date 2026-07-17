@@ -32,6 +32,10 @@ final class SpamFilter {
         return matcher(context).isMarkedSpam(address);
     }
 
+    static boolean hasMarkedSpam(Context context) {
+        return !senders(context).isEmpty() || !threads(context).isEmpty();
+    }
+
     static void markSpam(Context context, String address) {
         markSpam(context, address, "");
     }

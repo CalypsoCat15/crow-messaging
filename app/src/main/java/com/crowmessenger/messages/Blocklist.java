@@ -20,6 +20,10 @@ final class Blocklist {
         return matcher(context).isBlocked(address);
     }
 
+    static boolean hasBlockedSenders(Context context) {
+        return !numbers(context).isEmpty();
+    }
+
     static Matcher matcher(Context context) {
         return new Matcher(numbers(context));
     }
