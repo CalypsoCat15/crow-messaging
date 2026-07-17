@@ -25,8 +25,14 @@ final class SpamInboxSnapshotStore {
     }
 
     static synchronized void seedIfNeeded(Context context) {
-        if (!load(context).isEmpty()
-                || (!SpamFilter.hasMarkedSpam(context) && !Blocklist.hasBlockedSenders(context))) {
+        boolean hasFilteringRules = SpamFilter.hasMarkedSpam(context)
+                || SpamFilter.hasCustomKeywords(context)
+                || Blocklist.hasBlockedSenders(context);
+        if (!hasFilteringRules) {
+            return;
+        }
+        List<Conversation> savedRows = load(context);
+        if (!savedRows.isEmpty() && loadVisible(context).size() == savedRows.size()) {
             return;
         }
         write(context, SmsStore.loadConversations(context, true, ""), true);
@@ -99,7 +105,7 @@ final class SpamInboxSnapshotStore {
     ) {
         return conversation != null
                 && (blockMatcher.isBlocked(conversation.address)
-                || spamMatcher.isMarkedSpam(conversation.address)
+                || spamMatcher.isMarkedSpam(conversation.address, conversation.threadId)
                 || spamMatcher.matchesKeywordForUnknownSender(conversation.address, conversation.snippet));
     }
 

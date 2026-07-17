@@ -1980,8 +1980,11 @@ public class MainActivity extends Activity {
             ), new LinearLayout.LayoutParams(-1, -2));
             return;
         }
+        ConversationSuppression.SpamReasonMatcher spamReasonMatcher = blocked
+                ? ConversationSuppression.spamReasonMatcher(this)
+                : null;
         for (int index = 0; index < conversations.size(); index++) {
-            inboxList.addView(conversationRow(conversations.get(index)));
+            inboxList.addView(conversationRow(conversations.get(index), spamReasonMatcher));
             if (index + 1 < conversations.size()) {
                 View divider = new View(this);
                 divider.setBackgroundColor(DIVIDER);
@@ -2104,7 +2107,10 @@ public class MainActivity extends Activity {
         invalidateInboxPresentationCache();
     }
 
-    private View conversationRow(Conversation conversation) {
+    private View conversationRow(
+            Conversation conversation,
+            ConversationSuppression.SpamReasonMatcher spamReasonMatcher
+    ) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(8), dp(9), dp(8), dp(9));
@@ -2164,6 +2170,19 @@ public class MainActivity extends Activity {
         snippet.setEllipsize(TextUtils.TruncateAt.END);
         snippet.setPadding(0, dp(5), 0, 0);
         middle.addView(snippet);
+
+        if (spamReasonMatcher != null) {
+            TextView reason = text(
+                    spamReasonMatcher.reason(conversation),
+                    12,
+                    MINT,
+                    Typeface.BOLD
+            );
+            reason.setSingleLine(true);
+            reason.setEllipsize(TextUtils.TruncateAt.END);
+            reason.setPadding(0, dp(4), 0, 0);
+            middle.addView(reason);
+        }
 
         LinearLayout trailing = new LinearLayout(this);
         trailing.setOrientation(LinearLayout.VERTICAL);

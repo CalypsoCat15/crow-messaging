@@ -1,6 +1,7 @@
 package com.crowmessenger.messages;
 
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
@@ -29,6 +30,8 @@ public class ConversationSuppressionTest {
         context.getSharedPreferences("trashed_conversations", Context.MODE_PRIVATE).edit().clear().commit();
         context.getSharedPreferences("message_notifications", Context.MODE_PRIVATE).edit().clear().commit();
         context.getSharedPreferences("inbox_snapshot", Context.MODE_PRIVATE).edit().clear().commit();
+        TestContactsProvider.install();
+        TestContactsProvider.clear();
     }
 
     @Test
@@ -78,6 +81,21 @@ public class ConversationSuppressionTest {
         Blocklist.block(context, address);
 
         assertTrue(InboxSnapshotStore.loadVisible(context).isEmpty());
+    }
+
+    @Test
+    public void spamReason_explainsManualBlockedAndKeywordFiltering() {
+        Conversation manual = new Conversation("42", "15551234567", "Sender", "Hello", 100L, 0);
+        SpamFilter.markSpam(context, manual.address, manual.threadId);
+        assertEquals("You marked this as spam", ConversationSuppression.spamReason(context, manual));
+
+        Conversation blocked = new Conversation("43", "15557654321", "Sender", "Hello", 100L, 0);
+        Blocklist.block(context, blocked.address);
+        assertEquals("Blocked sender", ConversationSuppression.spamReason(context, blocked));
+
+        SpamFilter.addCustomKeywords(context, "donate");
+        Conversation keyword = new Conversation("44", "15550001111", "Sender", "Please donate", 100L, 0);
+        assertEquals("Matched rule: donate", ConversationSuppression.spamReason(context, keyword));
     }
 
     private void seedNotification(String address) {

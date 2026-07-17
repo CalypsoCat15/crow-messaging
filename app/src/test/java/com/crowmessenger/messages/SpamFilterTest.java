@@ -129,6 +129,46 @@ public class SpamFilterTest {
                 "15557654321",
                 "Donate to our charity today"
         ));
+        assertEquals(
+                "donate",
+                SpamFilter.matchingKeywordForUnknownSender(
+                        context,
+                        "15557654321",
+                        "Donate to our charity today"
+                )
+        );
+    }
+
+    @Test
+    public void matchingKeyword_prefersLongestMatchingRule() {
+        SpamFilter.addCustomKeywords(context, "donate, donate today, urgent gift, special gift");
+
+        assertEquals(
+                "donate today",
+                SpamFilter.matchingKeywordForUnknownSender(
+                        context,
+                        "15557654321",
+                        "Please donate today"
+                )
+        );
+        assertEquals(
+                "special gift",
+                SpamFilter.matchingKeywordForUnknownSender(
+                        context,
+                        "15557654321",
+                        "An urgent gift and special gift"
+                )
+        );
+    }
+
+    @Test
+    public void shortKeyword_matchesStandaloneTextButNotLettersInsideUrl() {
+        SpamFilter.addCustomKeywords(context, "tp");
+
+        assertTrue(SpamFilter.matchesCustomKeyword(context, "News from TP today"));
+        assertTrue(SpamFilter.matchesCustomKeyword(context, "Join TP-USA"));
+        assertFalse(SpamFilter.matchesCustomKeyword(context, "Visit https://example.com"));
+        assertFalse(SpamFilter.matchesCustomKeyword(context, "Your prescription is ready"));
     }
 
     @Test

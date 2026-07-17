@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>380 automated tests</strong> &bull; Native Android &bull; SMS + carrier MMS &bull; No ads or analytics
+  <strong>383 automated tests</strong> &bull; Native Android &bull; SMS + carrier MMS &bull; No ads or analytics
 </p>
 
 ## App Preview
@@ -104,6 +104,7 @@ Its design is personal on purpose, while its engineering priorities are practica
 - Mute individual conversations
 - Separate Spam & Blocked inbox
 - Durable Spam & blocked previews that remain available immediately after reopening the app
+- Clear filtering reasons for manually marked, blocked, and keyword-matched conversations
 - Custom spam keywords that apply only to unknown senders, protecting normal conversations with saved contacts
 - Block, unblock, and manually mark conversations as spam
 - Privacy-safe troubleshooting reports that avoid exposing message contents and phone numbers
@@ -120,7 +121,7 @@ Its design is personal on purpose, while its engineering priorities are practica
 
 ## Quality
 
-Crow Messenger is backed by **380 automated tests** covering message parsing, conversation grouping, search accuracy, unread-state timing, contact-aware spam behavior, durable spam-inbox recovery, Android sharing intents, SMS/MMS handling, incoming carrier-video recovery, animated GIF preparation, send-result recovery, scheduled messages, notifications, settings backup, and other core behavior. Android lint checks are also part of the verification process.
+Crow Messenger is backed by **383 automated tests** covering message parsing, conversation grouping, search accuracy, unread-state timing, contact-aware spam behavior, explainable whole-word spam rules, durable spam-inbox recovery, Android sharing intents, SMS/MMS handling, incoming carrier-video recovery, animated GIF preparation, send-result recovery, scheduled messages, notifications, settings backup, and other core behavior. Android lint checks are also part of the verification process.
 
 The project uses save points throughout development so working SMS and MMS behavior can be protected while new features are added.
 

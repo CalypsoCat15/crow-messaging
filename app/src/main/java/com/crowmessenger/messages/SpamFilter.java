@@ -36,6 +36,10 @@ final class SpamFilter {
         return !senders(context).isEmpty() || !threads(context).isEmpty();
     }
 
+    static boolean hasCustomKeywords(Context context) {
+        return !keywords(context).isEmpty();
+    }
+
     static void markSpam(Context context, String address) {
         markSpam(context, address, "");
     }
@@ -132,6 +136,10 @@ final class SpamFilter {
         return matcher(context).matchesKeywordForUnknownSender(address, body);
     }
 
+    static String matchingKeywordForUnknownSender(Context context, String address, String body) {
+        return matcher(context).matchingKeywordForUnknownSender(address, body);
+    }
+
     static Matcher matcher(Context context) {
         return new Matcher(context.getApplicationContext(), senders(context), threads(context), keywords(context));
     }
@@ -167,21 +175,34 @@ final class SpamFilter {
         }
 
         boolean matchesCustomKeyword(String body) {
+            return !TextUtils.isEmpty(matchingCustomKeyword(body));
+        }
+
+        String matchingCustomKeyword(String body) {
             if (TextUtils.isEmpty(body)) {
-                return false;
+                return "";
             }
             String lower = body.toLowerCase(Locale.US);
+            String bestMatch = "";
             for (String keyword : keywords) {
-                if (!TextUtils.isEmpty(keyword) && lower.contains(keyword)) {
-                    return true;
+                if (!TextUtils.isEmpty(keyword)
+                        && containsRule(lower, keyword)
+                        && (keyword.length() > bestMatch.length()
+                        || (keyword.length() == bestMatch.length() && keyword.compareTo(bestMatch) < 0))) {
+                    bestMatch = keyword;
                 }
             }
-            return false;
+            return bestMatch;
         }
 
         boolean matchesKeywordForUnknownSender(String address, String body) {
-            if (!matchesCustomKeyword(body)) {
-                return false;
+            return !TextUtils.isEmpty(matchingKeywordForUnknownSender(address, body));
+        }
+
+        String matchingKeywordForUnknownSender(String address, String body) {
+            String match = matchingCustomKeyword(body);
+            if (TextUtils.isEmpty(match)) {
+                return "";
             }
             String key = AddressUtil.stableKey(address);
             Boolean saved = savedContacts.get(key);
@@ -189,7 +210,25 @@ final class SpamFilter {
                 saved = ContactLookup.isSavedContact(context, address);
                 savedContacts.put(key, saved);
             }
-            return !saved;
+            return saved ? "" : match;
+        }
+
+        private static boolean containsRule(String body, String keyword) {
+            int start = body.indexOf(keyword);
+            while (start >= 0) {
+                int end = start + keyword.length();
+                boolean leftBoundary = start == 0
+                        || !Character.isLetterOrDigit(body.charAt(start - 1))
+                        || !Character.isLetterOrDigit(keyword.charAt(0));
+                boolean rightBoundary = end == body.length()
+                        || !Character.isLetterOrDigit(body.charAt(end))
+                        || !Character.isLetterOrDigit(keyword.charAt(keyword.length() - 1));
+                if (leftBoundary && rightBoundary) {
+                    return true;
+                }
+                start = body.indexOf(keyword, start + 1);
+            }
+            return false;
         }
     }
 
