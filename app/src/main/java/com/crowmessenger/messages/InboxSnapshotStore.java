@@ -1,14 +1,8 @@
 package com.crowmessenger.messages;
 
-import android.annotation.SuppressLint;
 import android.content.Context;
 import android.text.TextUtils;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import java.util.ArrayList;
 import java.util.List;
 
 final class InboxSnapshotStore {
@@ -24,84 +18,20 @@ final class InboxSnapshotStore {
         write(context, conversations, false);
     }
 
-    @SuppressLint("ApplySharedPref")
     private static void write(Context context, List<Conversation> conversations, boolean durable) {
-        JSONArray rows = new JSONArray();
-        if (conversations != null) {
-            for (Conversation conversation : conversations) {
-                if (conversation == null || TextUtils.isEmpty(conversation.address) || rows.length() >= MAX_ROWS) {
-                    continue;
-                }
-                JSONObject row = new JSONObject();
-                try {
-                    row.put("threadId", conversation.threadId);
-                    row.put("address", conversation.address);
-                    row.put("name", conversation.name);
-                    row.put("photoUri", conversation.photoUri);
-                    row.put("snippet", conversation.snippet);
-                    row.put("dateMillis", conversation.dateMillis);
-                    row.put("unreadCount", conversation.unreadCount);
-                    rows.put(row);
-                } catch (JSONException ignored) {
-                }
-            }
-        }
-        JSONObject snapshot = new JSONObject();
-        try {
-            snapshot.put("version", VERSION);
-            snapshot.put("rows", rows);
-        } catch (JSONException ignored) {
-        }
-        android.content.SharedPreferences.Editor editor = context
-                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .putString(KEY_SNAPSHOT, snapshot.toString());
-        if (durable) {
-            // The receiver must finish only after the sleeping-app snapshot reaches disk.
-            editor.commit();
-        } else {
-            editor.apply();
-        }
+        ConversationSnapshotStore.write(
+                context,
+                PREFS,
+                KEY_SNAPSHOT,
+                VERSION,
+                MAX_ROWS,
+                conversations,
+                durable
+        );
     }
 
     static synchronized List<Conversation> load(Context context) {
-        ArrayList<Conversation> conversations = new ArrayList<>();
-        String raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(KEY_SNAPSHOT, "");
-        if (TextUtils.isEmpty(raw)) {
-            return conversations;
-        }
-        try {
-            JSONObject snapshot = new JSONObject(raw);
-            if (snapshot.optInt("version") != VERSION) {
-                return conversations;
-            }
-            JSONArray rows = snapshot.optJSONArray("rows");
-            if (rows == null) {
-                return conversations;
-            }
-            for (int index = 0; index < rows.length() && conversations.size() < MAX_ROWS; index++) {
-                JSONObject row = rows.optJSONObject(index);
-                if (row == null || TextUtils.isEmpty(row.optString("address"))) {
-                    continue;
-                }
-                conversations.add(new Conversation(
-                        row.optString("threadId"),
-                        row.optString("address"),
-                        row.optString("name"),
-                        row.optString("photoUri"),
-                        row.optString("snippet"),
-                        row.optLong("dateMillis"),
-                        Math.max(0, row.optInt("unreadCount"))
-                ));
-            }
-        } catch (JSONException ignored) {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .edit()
-                    .remove(KEY_SNAPSHOT)
-                    .apply();
-        }
-        return conversations;
+        return ConversationSnapshotStore.load(context, PREFS, KEY_SNAPSHOT, VERSION, MAX_ROWS);
     }
 
     static List<Conversation> loadVisible(Context context) {
