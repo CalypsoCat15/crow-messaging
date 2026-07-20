@@ -49,6 +49,7 @@ import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.text.method.LinkMovementMethod;
 import android.text.style.BackgroundColorSpan;
 import android.text.style.ForegroundColorSpan;
 import android.util.LruCache;
@@ -2797,6 +2798,18 @@ public class MainActivity extends Activity {
             TextView bubble = text(displayText, TextSizePrefs.messageSp(this), BLACK, Typeface.NORMAL);
             if (!TextUtils.isEmpty(threadSearchQuery)) {
                 bubble.setText(highlightSearchMatch(displayText, threadSearchQuery));
+            }
+            SpannableString linkedText = MessageLinkUtil.linkifyWebUrls(bubble.getText());
+            bubble.setText(linkedText);
+            if (MessageLinkUtil.hasWebLinks(linkedText)) {
+                bubble.setLinkTextColor(BLACK);
+                bubble.setHighlightColor(Color.argb(48, 0, 0, 0));
+                bubble.setLinksClickable(true);
+                bubble.setMovementMethod(LinkMovementMethod.getInstance());
+                bubble.setOnLongClickListener(v -> {
+                    showMessageActions(message);
+                    return true;
+                });
             }
             bubble.setMaxWidth(dp(285));
             bubble.setPadding(dp(14), dp(9), dp(14), dp(9));
