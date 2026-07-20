@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>391 automated tests</strong> &bull; Native Android &bull; SMS + carrier MMS &bull; No ads or analytics
+  <strong>397 automated tests</strong> &bull; Native Android &bull; SMS + carrier MMS &bull; No ads or analytics
 </p>
 
 ## App Preview
@@ -35,7 +35,7 @@
 
 | | Crow Messenger |
 |---|---|
-| **Everyday messaging** | One-to-one and group SMS/MMS, pictures, captions, animated GIFs, drafts, scheduled sends, and notifications |
+| **Everyday messaging** | One-to-one and group SMS/MMS, pictures, captions, animated GIFs, link previews, drafts, scheduled sends, and notifications |
 | **Media tools** | Gallery and Camera attachments, direct Android sharing, multi-picture sending, orientation correction, incoming carrier-video playback, and conversation media browsing |
 | **Reliability** | Fast inbox updates, accurate unread state, failed-send recovery, interrupted-download recovery, and duplicate group-thread prevention |
 | **Control** | Search with highlighted matches, pinned chats, Trash and restore, Spam & Blocked, per-contact sounds, and long-press message actions |
@@ -59,6 +59,7 @@ Its design is personal on purpose, while its engineering priorities are practica
 
 - Send and receive standard SMS messages
 - Open web links directly from sent and received message bubbles
+- See compact website previews with the page title, description, and image when available
 - Send and receive MMS pictures with or without captions
 - Receive carrier video MMS with a thumbnail, playback, saving, sharing, and recovery for initially misidentified downloads
 - Send animated GIFs from the keyboard directly into the open conversation
@@ -121,7 +122,7 @@ Its design is personal on purpose, while its engineering priorities are practica
 
 ## Quality
 
-Crow Messenger is backed by **391 automated tests** covering message parsing, tappable web-link formatting, conversation grouping, search accuracy, unread-state timing, contact-aware spam behavior, explainable whole-word spam rules, durable inbox and spam-inbox recovery, Android sharing intents, SMS/MMS handling, incoming carrier-video recovery, animated GIF preparation, send-result recovery, scheduled messages, notifications, settings backup, and other core behavior. Android lint checks are also part of the verification process.
+Crow Messenger is backed by **397 automated tests** covering message parsing, tappable links and bounded link previews, conversation grouping, search accuracy, unread-state timing, contact-aware spam behavior, explainable whole-word spam rules, durable inbox and spam-inbox recovery, Android sharing intents, SMS/MMS handling, incoming carrier-video recovery, animated GIF preparation, send-result recovery, scheduled messages, notifications, settings backup, and other core behavior. Android lint checks are also part of the verification process.
 
 The project uses save points throughout development so working SMS and MMS behavior can be protected while new features are added.
 
@@ -137,12 +138,14 @@ Carrier MMS behavior can vary by device, mobile network, and carrier configurati
 - Crow stores SMS/MMS records, contacts-derived display data, drafts, blocked senders, and notification preferences only on the Android device; carrier delivery still uses Android's normal SMS/MMS services.
 - The optional troubleshooting report omits names, phone numbers, captions, and message text.
 - Settings backups intentionally exclude conversations, pictures, phone numbers, drafts, and scheduled-message contents.
+- Link previews connect directly to public HTTPS websites only after a conversation containing the link is opened. Preview requests use short timeouts and strict size limits and do not include message text or contact information.
 - Repository tests use reserved fictional `555` phone numbers and `example.com` addresses rather than real contact data.
 
 ## Built With
 
 - Native Android and Java
 - Android SMS, MMS, contacts, notifications, Camera, and Gallery integrations
+- [jsoup](https://jsoup.org/) for standards-aware website preview metadata parsing
 - Gradle build tooling
 - Robolectric and JUnit automated tests
 

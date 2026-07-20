@@ -25,6 +25,24 @@ final class MessageLinkUtil {
         return spanned.getSpans(0, spanned.length(), URLSpan.class).length > 0;
     }
 
+    static String firstWebUrl(CharSequence text) {
+        if (!(text instanceof Spanned)) {
+            return "";
+        }
+        Spanned spanned = (Spanned) text;
+        URLSpan[] links = spanned.getSpans(0, spanned.length(), URLSpan.class);
+        URLSpan first = null;
+        int firstStart = Integer.MAX_VALUE;
+        for (URLSpan link : links) {
+            int start = spanned.getSpanStart(link);
+            if (start >= 0 && start < firstStart) {
+                first = link;
+                firstStart = start;
+            }
+        }
+        return first == null || first.getURL() == null ? "" : first.getURL();
+    }
+
     private static void trimTrailingSentencePunctuation(SpannableString text) {
         URLSpan[] links = text.getSpans(0, text.length(), URLSpan.class);
         for (URLSpan link : links) {

@@ -2800,6 +2800,7 @@ public class MainActivity extends Activity {
                 bubble.setText(highlightSearchMatch(displayText, threadSearchQuery));
             }
             SpannableString linkedText = MessageLinkUtil.linkifyWebUrls(bubble.getText());
+            String previewUrl = MessageLinkUtil.firstWebUrl(linkedText);
             bubble.setText(linkedText);
             if (MessageLinkUtil.hasWebLinks(linkedText)) {
                 bubble.setLinkTextColor(BLACK);
@@ -2820,6 +2821,9 @@ public class MainActivity extends Activity {
                     groupedWithNext
             ));
             stack.addView(bubble);
+            if (!TextUtils.isEmpty(previewUrl)) {
+                addLinkPreview(stack, previewUrl, message);
+            }
         }
 
         String verificationCode = message.outgoing ? "" : VerificationCodeUtil.findCode(displayText);
@@ -2847,6 +2851,110 @@ public class MainActivity extends Activity {
         }
         holder.addView(stack);
         return holder;
+    }
+
+    private void addLinkPreview(LinearLayout stack, String url, ChatMessage message) {
+        FrameLayout previewHost = new FrameLayout(this);
+        previewHost.setVisibility(View.GONE);
+        LinearLayout.LayoutParams hostParams = new LinearLayout.LayoutParams(dp(285), -2);
+        hostParams.topMargin = dp(4);
+        stack.addView(previewHost, hostParams);
+        LinkPreviewLoader.load(url, result -> {
+            if (result == null
+                    || result.preview == null
+                    || isFinishing()
+                    || isDestroyed()
+                    || previewHost.getParent() == null) {
+                return;
+            }
+            boolean currentChat = screenMode == ScreenMode.CHAT && previewHost.isAttachedToWindow();
+            boolean keepAtBottom = currentChat && isScrollNearBottom(activeScrollView, dp(120));
+            renderLinkPreview(previewHost, result, message);
+            if (keepAtBottom) {
+                settleThreadAtBottom();
+            }
+        });
+    }
+
+    private void renderLinkPreview(
+            FrameLayout previewHost,
+            LinkPreviewLoader.Result result,
+            ChatMessage message
+    ) {
+        LinkPreview preview = result.preview;
+        int accent = message.outgoing ? MINT : CYAN;
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(linkPreviewBackground(accent));
+        card.setClipToOutline(true);
+        card.setContentDescription("Open link preview for " + (
+                TextUtils.isEmpty(preview.title) ? preview.siteName : preview.title
+        ));
+        setFeedbackClickListener(card, v -> openLinkPreview(preview.pageUrl));
+        card.setOnLongClickListener(v -> {
+            showMessageActions(message);
+            return true;
+        });
+
+        if (result.image != null) {
+            ImageView image = new ImageView(this);
+            image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            image.setImageBitmap(result.image);
+            image.setContentDescription("");
+            card.addView(image, new LinearLayout.LayoutParams(-1, dp(126)));
+        }
+
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+        details.setPadding(dp(12), dp(10), dp(12), dp(11));
+        card.addView(details, new LinearLayout.LayoutParams(-1, -2));
+
+        if (!TextUtils.isEmpty(preview.siteName)) {
+            TextView site = text(preview.siteName, 11, accent, Typeface.BOLD);
+            site.setSingleLine(true);
+            site.setEllipsize(TextUtils.TruncateAt.END);
+            details.addView(site);
+        }
+        String titleText = TextUtils.isEmpty(preview.title) ? preview.siteName : preview.title;
+        if (!TextUtils.isEmpty(titleText)) {
+            TextView title = text(titleText, 15, TEXT, Typeface.BOLD);
+            title.setMaxLines(2);
+            title.setEllipsize(TextUtils.TruncateAt.END);
+            title.setPadding(0, dp(4), 0, 0);
+            details.addView(title);
+        }
+        if (!TextUtils.isEmpty(preview.description)) {
+            TextView description = text(preview.description, 13, MUTED, Typeface.NORMAL);
+            description.setMaxLines(2);
+            description.setEllipsize(TextUtils.TruncateAt.END);
+            description.setPadding(0, dp(5), 0, 0);
+            details.addView(description);
+        }
+
+        previewHost.removeAllViews();
+        previewHost.addView(card, new FrameLayout.LayoutParams(-1, -2));
+        previewHost.setVisibility(View.VISIBLE);
+    }
+
+    private GradientDrawable linkPreviewBackground(int accent) {
+        GradientDrawable background = roundedBackground(SURFACE, 16);
+        background.setStroke(dp(1), Color.argb(125, Color.red(accent), Color.green(accent), Color.blue(accent)));
+        return background;
+    }
+
+    private void openLinkPreview(String url) {
+        String safeUrl = LinkPreviewUrlPolicy.normalizedFetchUrl(url);
+        if (TextUtils.isEmpty(safeUrl)) {
+            Toast.makeText(this, "That link could not be opened.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Intent browser = new Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl));
+        browser.addCategory(Intent.CATEGORY_BROWSABLE);
+        try {
+            startActivity(browser);
+        } catch (RuntimeException ignored) {
+            Toast.makeText(this, "No browser is available for that link.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private GradientDrawable messageShapeBackground(int color, boolean outgoing, boolean groupedWithPrevious, boolean groupedWithNext) {

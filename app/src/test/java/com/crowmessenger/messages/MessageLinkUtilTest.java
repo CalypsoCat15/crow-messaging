@@ -41,6 +41,7 @@ public class MessageLinkUtilTest {
         assertEquals(2, spans.length);
         assertEquals("http://www.example.com", spans[0].getURL());
         assertEquals("http://example.org/help", spans[1].getURL());
+        assertEquals("http://www.example.com", MessageLinkUtil.firstWebUrl(linked));
     }
 
     @Test
